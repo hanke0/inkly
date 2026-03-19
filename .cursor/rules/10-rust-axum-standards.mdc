@@ -1,0 +1,23 @@
+---
+description: Rust + Axum coding and API conventions
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust conventions
+- Rust code must be formatted with `rustfmt` and pass `clippy` when feasible.
+- Use `thiserror` for error types and map them to HTTP responses in one place.
+- Avoid `unwrap()`/`expect()`; use `?` and propagate typed errors.
+- Keep modules small: split handlers, services, and domain logic into separate files/modules.
+
+# Axum API conventions
+- Handlers should return `Result<_, AppError>` (or equivalent) rather than panicking.
+- All JSON payloads must be defined as `serde::{Serialize, Deserialize}` DTOs.
+- Do not expose internal domain types directly to the API; use DTOs at the edges.
+- Validate inputs explicitly (lengths, required fields, query limits).
+- Prefer `axum::extract::State` for shared dependencies (e.g., Tantivy index writer/searcher).
+
+# Logging & tracing
+- Use `tracing` (not `println!`) with structured fields.
+- Include a request-scoped identifier in logs where possible.
+

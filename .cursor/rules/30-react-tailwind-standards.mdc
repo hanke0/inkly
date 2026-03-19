@@ -1,0 +1,24 @@
+---
+description: React + Tailwind code conventions
+globs: "**/*.tsx"
+alwaysApply: false
+---
+
+# React conventions
+- Use functional components and hooks.
+- Prefer small components; extract reusable logic into custom hooks.
+- Do not duplicate state across multiple components; derive state when possible.
+
+# TypeScript & API contracts
+- All API payloads must be typed (no `any` / untyped JSON).
+- Keep API DTOs in dedicated modules and reuse them across components.
+
+# Tailwind conventions
+- Use Tailwind utility classes for styling via `className`.
+- Avoid inline styles unless strictly required.
+- For long conditional class lists, use a helper like `clsx` (or equivalent) instead of manual string concatenation.
+
+# Accessibility & UX
+- Ensure interactive elements have accessible labels (`aria-label`, `role`, or visible text).
+- Handle loading and error states explicitly for async operations.
+

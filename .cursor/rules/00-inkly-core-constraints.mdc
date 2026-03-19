@@ -1,0 +1,20 @@
+---
+description: Core architecture constraints for Inkly
+alwaysApply: true
+---
+
+# Inkly stack constraints
+- Backend must be implemented in Rust using `axum`.
+- Frontend must be implemented as a React web app (SPA) using Tailwind CSS utility classes.
+- Search + storage must use Tantivy (indexing, querying, and persistence rules must follow the Tantivy rule).
+
+# How to structure changes
+- Keep responsibilities separated: API layer (Axum) should not contain indexing/querying business logic; move Tantivy logic into dedicated Rust modules/services.
+- Define a single shared contract for API payloads (DTOs) and avoid ad-hoc JSON shapes.
+- Favor typed boundaries: prefer `serde`-serializable structs/enums over `Value`/untyped maps.
+
+# Quality bar
+- Never use `unwrap()`/`expect()` in request paths or background tasks; return/handle errors explicitly.
+- Use `tracing` for logs with structured fields (e.g., request id, tenant, document id).
+- Add tests when touching non-trivial behavior (query semantics, indexing updates, API error mapping).
+

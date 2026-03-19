@@ -1,0 +1,24 @@
+---
+description: Tantivy schema, indexing, and query rules
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Indexing & schema
+- Design a stable schema: define field types up-front and keep field names consistent across versions.
+- Use a single primary document id field (e.g., `doc_id`) to support updates/deletes deterministically.
+- Avoid re-indexing whole datasets for incremental changes; use Tantivy's update patterns where appropriate.
+
+# Persistence & commit policy
+- Be explicit about when writes are committed (writer `commit`/segment refresh).
+- Ensure background indexing/commit tasks have a clear lifecycle and error reporting path.
+
+# Searching & query parsing
+- Always enforce query limits (top-k, max query length, allowed filters).
+- Prefer programmatic query building over parsing untrusted raw query strings.
+- If query parsing is user-driven, validate/limit inputs and handle parse errors as typed API errors.
+
+# Determinism and safety
+- Never let a request allocate unbounded memory (e.g., huge result sets).
+- Return total hits / pagination metadata consistently from search endpoints.
+
