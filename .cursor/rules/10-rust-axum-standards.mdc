@@ -16,6 +16,7 @@ alwaysApply: false
 - Do not expose internal domain types directly to the API; use DTOs at the edges.
 - Validate inputs explicitly (lengths, required fields, query limits).
 - Prefer `axum::extract::State` for shared dependencies (e.g., Tantivy index writer/searcher).
+- Every HTTP API endpoint must have automated tests (prefer integration tests covering request/response behavior, plus unit tests for the underlying services when appropriate).
 
 # Logging & tracing
 - Use `tracing` (not `println!`) with structured fields.
