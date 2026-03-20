@@ -18,6 +18,12 @@ alwaysApply: false
 - Prefer programmatic query building over parsing untrusted raw query strings.
 - If query parsing is user-driven, validate/limit inputs and handle parse errors as typed API errors.
 
+# Security for search/storage
+- Never return search results that the caller is not authorized to see; apply tenant/user permission filters at query time.
+- Avoid indexing secrets or sensitive fields in plaintext unless you have a clear threat model and compensating controls.
+- Restrict which fields are searchable/sortable to reduce data exposure and expensive queries.
+- Guard against query-driven DoS: cap complexity (e.g., top-k, boolean clauses, wildcard usage) and enforce timeouts/budgeting where available.
+
 # Determinism and safety
 - Never let a request allocate unbounded memory (e.g., huge result sets).
 - Return total hits / pagination metadata consistently from search endpoints.

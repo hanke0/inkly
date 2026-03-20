@@ -22,3 +22,11 @@ alwaysApply: false
 - Use `tracing` (not `println!`) with structured fields.
 - Include a request-scoped identifier in logs where possible.
 
+# Security checklist for Axum APIs
+- Protected endpoints must perform authn/authz checks on the backend (service layer or middleware), not just on the frontend.
+- Validate request bodies and query parameters (lengths, allowed ranges, pagination limits).
+- Enforce payload size limits (and consider timeouts) to mitigate DoS.
+- Do not include secrets/tokens in logs; never log authorization headers or credentials.
+- Return error responses that avoid leaking stack traces or internal implementation details.
+- Configure CORS intentionally (allow only required origins/methods/headers).
+

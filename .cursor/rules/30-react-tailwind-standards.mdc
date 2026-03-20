@@ -17,8 +17,14 @@ alwaysApply: false
 - Use Tailwind utility classes for styling via `className`.
 - Avoid inline styles unless strictly required.
 - For long conditional class lists, use a helper like `clsx` (or equivalent) instead of manual string concatenation.
+- Keep UI colors low-saturation: prefer neutral/grayscale (e.g., `slate`, `stone`, `gray`) and muted tones; avoid highly saturated/vivid brand colors unless required for a clear affordance.
 
 # Accessibility & UX
 - Ensure interactive elements have accessible labels (`aria-label`, `role`, or visible text).
 - Handle loading and error states explicitly for async operations.
+
+# Frontend security notes
+- Do not trust client input: treat all user-provided data as untrusted (validate on the backend as the source of truth).
+- Prevent XSS: never render untrusted HTML; avoid `dangerouslySetInnerHTML` and escape/encode any text coming from search/snippets.
+- Do not store secrets/tokens in insecure locations (prefer `httpOnly` cookies for auth tokens when possible).
 

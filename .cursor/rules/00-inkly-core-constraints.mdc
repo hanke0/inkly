@@ -18,3 +18,10 @@ alwaysApply: true
 - Use `tracing` for logs with structured fields (e.g., request id, tenant, document id).
 - Add tests when touching non-trivial behavior (query semantics, indexing updates, API error mapping).
 
+# Security defaults (end-to-end)
+- Treat all client input as untrusted: validate sizes, formats, and allowed values at the API boundary.
+- Enforce authentication and authorization for protected resources; never rely on frontend-only checks.
+- Apply permission scoping to search/storage: users can only query documents they are allowed to access.
+- Avoid leaking internals: return generic error messages to clients; log detailed errors internally without secrets.
+- Configure request size limits and rate limiting to reduce DoS risk.
+
