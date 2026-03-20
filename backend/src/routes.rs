@@ -58,9 +58,6 @@ fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
             return Err(ApiError::bad_request("invalid tags"));
         }
     }
-    if input.updated_at < input.created_at {
-        return Err(ApiError::bad_request("invalid timestamps"));
-    }
     Ok(())
 }
 
@@ -76,8 +73,6 @@ pub async fn index_document(
     let title = input.title;
     let content = input.content;
     let doc_url = input.doc_url;
-    let created_at = input.created_at;
-    let updated_at = input.updated_at;
     let tags = input.tags;
     let path = input.path;
     let note = input.note;
@@ -97,8 +92,6 @@ pub async fn index_document(
             &title,
             &content,
             &doc_url,
-            created_at,
-            updated_at,
             &tags,
             &path,
             &note,
@@ -127,7 +120,7 @@ pub async fn index_documents_bulk(
     }
 
     let tenant_id = user.tenant_id;
-    let docs: Vec<(u64, String, String, String, i64, i64, Vec<String>, String, String)> = input
+    let docs: Vec<(u64, String, String, String, Vec<String>, String, String)> = input
         .documents
         .into_iter()
         .map(|d| {
@@ -136,8 +129,6 @@ pub async fn index_documents_bulk(
                 d.title,
                 d.content,
                 d.doc_url,
-                d.created_at,
-                d.updated_at,
                 d.tags,
                 d.path,
                 d.note,

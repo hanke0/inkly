@@ -3,8 +3,6 @@ export type DocumentIn = {
   title: string;
   content: string;
   doc_url: string;
-  created_at: number;
-  updated_at: number;
   tags: string[];
   path: string;
   note: string;

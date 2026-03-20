@@ -43,6 +43,44 @@ pub struct IndexManager {
 }
 
 impl IndexManager {
+    fn now_unix_seconds() -> Result<i64> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| SearchError::InvalidInput(format!("time went backwards: {e}")))?
+            .as_secs() as i64;
+        Ok(now)
+    }
+
+    fn existing_created_at(
+        &self,
+        searcher: &tantivy::Searcher,
+        tenant_id: &str,
+        doc_id: u64,
+    ) -> Result<Option<i64>> {
+        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
+        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
+
+        let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
+        let doc_id_query = TermQuery::new(doc_id_term, IndexRecordOption::Basic);
+        let query = BooleanQuery::new(vec![
+            (Occur::Must, Box::new(tenant_query)),
+            (Occur::Must, Box::new(doc_id_query)),
+        ]);
+
+        let hits = searcher.search(&query, &TopDocs::with_limit(1))?;
+        let (_, doc_address) = match hits.into_iter().next() {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+
+        let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
+        let created_at = retrieved
+            .get_first(self.created_timestamp_field)
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        Ok(Some(created_at))
+    }
+
     pub fn open_or_create<P: AsRef<Path>>(index_dir: P) -> Result<Self> {
         let index_dir = index_dir.as_ref();
         std::fs::create_dir_all(index_dir)?;
@@ -126,12 +164,20 @@ impl IndexManager {
         title: &str,
         content: &str,
         doc_url: &str,
-        created_at: i64,
-        updated_at: i64,
         tags: &[String],
         path: &str,
         note: &str,
     ) -> Result<IndexStats> {
+        let now = Self::now_unix_seconds()?;
+
+        // Preserve existing `created_at` (first time this doc_id is ever indexed within a tenant).
+        let reader = self.index.reader()?;
+        let searcher = reader.searcher();
+        let created_at = self
+            .existing_created_at(&searcher, tenant_id, doc_id)?
+            .unwrap_or(now);
+        let updated_at = now;
+
         if tenant_id.trim().is_empty() {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
@@ -177,24 +223,23 @@ impl IndexManager {
     pub fn index_documents(
         &self,
         tenant_id: &str,
-        docs: impl IntoIterator<
-            Item = (
-                u64,
-                String,
-                String,
-                String,
-                i64, // created_at
-                i64, // updated_at
-                Vec<String>,
-                String,
-                String,
-            ),
-        >,
+        docs: impl IntoIterator<Item = (u64, String, String, String, Vec<String>, String, String)>,
     ) -> Result<IndexStats> {
+        let now = Self::now_unix_seconds()?;
+
+        // Reuse one searcher for all docs in the batch.
+        let reader = self.index.reader()?;
+        let searcher = reader.searcher();
+
         let mut writer = self.index.writer(50_000_000)?;
         let mut indexed = 0u64;
 
-        for (doc_id, title, content, doc_url, created_at, updated_at, tags, path, note) in docs {
+        for (doc_id, title, content, doc_url, tags, path, note) in docs {
+            let created_at = self
+                .existing_created_at(&searcher, tenant_id, doc_id)?
+                .unwrap_or(now);
+            let updated_at = now;
+
             let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
             let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
             let delete_tenant_query =

@@ -7,10 +7,6 @@ pub struct DocumentIn {
     pub title: String,
     pub content: String,
     pub doc_url: String,
-    /// Unix timestamp (seconds) when the document was created.
-    pub created_at: i64,
-    /// Unix timestamp (seconds) when the document was last updated.
-    pub updated_at: i64,
     pub tags: Vec<String>,
     pub path: String,
     pub note: String,
