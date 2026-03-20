@@ -18,9 +18,15 @@ export default function App() {
   const [jwt, setJwt] = useState<string>("");
   const [tokenStatus, setTokenStatus] = useState<string>("");
 
-  const [docId, setDocId] = useState<string>("doc-1");
+  const [docId, setDocId] = useState<number>(1);
   const [title, setTitle] = useState<string>("Hello");
   const [content, setContent] = useState<string>("This is a test document.");
+  const [docUrl, setDocUrl] = useState<string>("https://example.com/doc/1");
+  const [createdTimestamp, setCreatedTimestamp] = useState<number>(() => Math.floor(Date.now() / 1000));
+  const [updateTimestamp, setUpdateTimestamp] = useState<number>(() => Math.floor(Date.now() / 1000));
+  const [tagsText, setTagsText] = useState<string>("test,example");
+  const [path, setPath] = useState<string>("/");
+  const [note, setNote] = useState<string>("Optional note...");
 
   const [q, setQ] = useState<string>("test");
   const [limit, setLimit] = useState<number>(10);
@@ -59,10 +65,21 @@ export default function App() {
     setSearchRes(null);
     setLoading(true);
 
+    const tags = tagsText
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
     const payload: DocumentIn = {
-      doc_id: docId.trim(),
+      doc_id: docId,
       title: title.trim(),
       content,
+      doc_url: docUrl.trim(),
+      created_at: createdTimestamp,
+      updated_at: updateTimestamp,
+      tags,
+      path: path.trim(),
+      note,
     };
 
     try {
@@ -163,9 +180,10 @@ export default function App() {
                 <div>
                   <label className="block text-sm text-zinc-300">doc_id</label>
                   <input
+                    type="number"
                     className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
                     value={docId}
-                    onChange={(e) => setDocId(e.target.value)}
+                    onChange={(e) => setDocId(Number(e.target.value))}
                   />
                 </div>
                 <div>
@@ -184,6 +202,64 @@ export default function App() {
                   className="mt-2 h-28 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 font-mono text-sm outline-none focus:border-zinc-700"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
+                />
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm text-zinc-300">doc_url</label>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                    value={docUrl}
+                    onChange={(e) => setDocUrl(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-zinc-300">path</label>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm text-zinc-300">created_at (unix seconds)</label>
+                  <input
+                    type="number"
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                    value={createdTimestamp}
+                    onChange={(e) => setCreatedTimestamp(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-zinc-300">updated_at (unix seconds)</label>
+                  <input
+                    type="number"
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                    value={updateTimestamp}
+                    onChange={(e) => setUpdateTimestamp(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <label className="block text-sm text-zinc-300">tags (comma-separated)</label>
+                <input
+                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                  value={tagsText}
+                  onChange={(e) => setTagsText(e.target.value)}
+                />
+              </div>
+
+              <div className="mt-3">
+                <label className="block text-sm text-zinc-300">note</label>
+                <textarea
+                  className="mt-2 h-20 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 font-mono text-sm outline-none focus:border-zinc-700"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
                 />
               </div>
 
@@ -266,10 +342,18 @@ export default function App() {
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-zinc-100">{r.title}</div>
                           <div className="mt-1 text-xs text-zinc-400 font-mono">{r.doc_id}</div>
+                          <div className="mt-1 text-xs text-zinc-500 font-mono truncate">
+                            {r.doc_url}
+                          </div>
                         </div>
                         <div className="text-xs text-zinc-400 font-mono">{r.score.toFixed(3)}</div>
                       </div>
                       <div className="mt-2 text-sm text-zinc-300 font-mono">{r.snippet}</div>
+                      <div className="mt-2 text-xs text-zinc-400">
+                        <div className="font-mono truncate">path: {r.path}</div>
+                        <div className="font-mono truncate">tags: {r.tags.join(", ")}</div>
+                        <div className="font-mono mt-1 text-zinc-500 truncate">{r.note}</div>
+                      </div>
                     </div>
                   ))}
                 </div>

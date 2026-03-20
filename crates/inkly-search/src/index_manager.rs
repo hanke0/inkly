@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
-use tantivy::schema::{Field, IndexRecordOption, STORED, STRING, TEXT, Value};
+use tantivy::schema::{Field, IndexRecordOption, FAST, STORED, STRING, TEXT, Value};
 use tantivy::{doc, schema, Index, Term};
 
 use crate::error::{Result, SearchError};
@@ -15,20 +15,31 @@ pub struct IndexStats {
 
 #[derive(Clone, Debug)]
 pub struct SearchResultItem {
-    pub doc_id: String,
+    pub doc_id: u64,
     pub title: String,
+    pub doc_url: String,
     pub snippet: String,
     pub score: f32,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub tags: Vec<String>,
+    pub path: String,
+    pub note: String,
 }
 
 #[derive(Clone)]
 pub struct IndexManager {
     index: Index,
     tenant_id_field: Field,
-    doc_key_field: Field,
     doc_id_field: Field,
+    doc_url_field: Field,
     title_field: Field,
     content_field: Field,
+    created_timestamp_field: Field,
+    update_timestamp_field: Field,
+    tags_field: Field,
+    path_field: Field,
+    note_field: Field,
 }
 
 impl IndexManager {
@@ -48,26 +59,46 @@ impl IndexManager {
         let tenant_id_field = schema
             .get_field("tenant_id")
             .map_err(|_| SearchError::InvalidInput("missing tenant_id field".into()))?;
-        let doc_key_field = schema
-            .get_field("doc_key")
-            .map_err(|_| SearchError::InvalidInput("missing doc_key field".into()))?;
         let doc_id_field = schema
             .get_field("doc_id")
             .map_err(|_| SearchError::InvalidInput("missing doc_id field".into()))?;
+        let doc_url_field = schema
+            .get_field("doc_url")
+            .map_err(|_| SearchError::InvalidInput("missing doc_url field".into()))?;
         let title_field = schema
             .get_field("title")
             .map_err(|_| SearchError::InvalidInput("missing title field".into()))?;
         let content_field = schema
             .get_field("content")
             .map_err(|_| SearchError::InvalidInput("missing content field".into()))?;
+        let created_timestamp_field = schema
+            .get_field("created_timestamp")
+            .map_err(|_| SearchError::InvalidInput("missing created_timestamp field".into()))?;
+        let update_timestamp_field = schema
+            .get_field("update_timestamp")
+            .map_err(|_| SearchError::InvalidInput("missing update_timestamp field".into()))?;
+        let tags_field = schema
+            .get_field("tags")
+            .map_err(|_| SearchError::InvalidInput("missing tags field".into()))?;
+        let path_field = schema
+            .get_field("path")
+            .map_err(|_| SearchError::InvalidInput("missing path field".into()))?;
+        let note_field = schema
+            .get_field("note")
+            .map_err(|_| SearchError::InvalidInput("missing note field".into()))?;
 
         Ok(Self {
             index,
             tenant_id_field,
-            doc_key_field,
             doc_id_field,
+            doc_url_field,
             title_field,
             content_field,
+            created_timestamp_field,
+            update_timestamp_field,
+            tags_field,
+            path_field,
+            note_field,
         })
     }
 
@@ -75,44 +106,64 @@ impl IndexManager {
         let mut builder = schema::Schema::builder();
 
         let _tenant_id = builder.add_text_field("tenant_id", STRING | STORED);
-        let _doc_key = builder.add_text_field("doc_key", STRING | STORED);
-        let _doc_id = builder.add_text_field("doc_id", STRING | STORED);
+        let _doc_id = builder.add_u64_field("doc_id", FAST | STORED);
+        let _doc_url = builder.add_text_field("doc_url", STRING | STORED);
         let _title = builder.add_text_field("title", TEXT | STORED);
         let _content = builder.add_text_field("content", TEXT | STORED);
+        let _created_timestamp = builder.add_i64_field("created_timestamp", STORED);
+        let _update_timestamp = builder.add_i64_field("update_timestamp", STORED);
+        let _tags = builder.add_text_field("tags", STRING | STORED);
+        let _path = builder.add_text_field("path", STRING | STORED);
+        let _note = builder.add_text_field("note", TEXT | STORED);
 
         builder.build()
-    }
-
-    fn doc_key(tenant_id: &str, doc_id: &str) -> String {
-        format!("{tenant_id}:{doc_id}")
     }
 
     pub fn index_document(
         &self,
         tenant_id: &str,
-        doc_id: &str,
+        doc_id: u64,
         title: &str,
         content: &str,
+        doc_url: &str,
+        created_at: i64,
+        updated_at: i64,
+        tags: &[String],
+        path: &str,
+        note: &str,
     ) -> Result<IndexStats> {
         if tenant_id.trim().is_empty() {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
-        if doc_id.trim().is_empty() {
-            return Err(SearchError::InvalidInput("doc_id is empty".into()));
-        }
+        // u64 doc_id is always "present".
 
         let mut writer = self.index.writer(50_000_000)?;
+        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
+        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
+        let delete_tenant_query =
+            TermQuery::new(tenant_term, IndexRecordOption::Basic);
+        let delete_doc_id_query =
+            TermQuery::new(doc_id_term, IndexRecordOption::Basic);
+        let delete_query = BooleanQuery::new(vec![
+            (Occur::Must, Box::new(delete_tenant_query)),
+            (Occur::Must, Box::new(delete_doc_id_query)),
+        ]);
+        writer.delete_query(Box::new(delete_query))?;
 
-        let key = Self::doc_key(tenant_id, doc_id);
-        writer.delete_term(Term::from_field_text(self.doc_key_field, &key));
-
-        let document = doc!(
+        let mut document = doc!(
             self.tenant_id_field => tenant_id,
-            self.doc_key_field => key,
             self.doc_id_field => doc_id,
+            self.doc_url_field => doc_url,
             self.title_field => title,
-            self.content_field => content
+            self.content_field => content,
+            self.created_timestamp_field => created_at,
+            self.update_timestamp_field => updated_at,
+            self.path_field => path,
+            self.note_field => note
         );
+        for tag in tags {
+            document.add_text(self.tags_field, tag);
+        }
         writer.add_document(document)?;
 
         writer.commit()?;
@@ -126,22 +177,50 @@ impl IndexManager {
     pub fn index_documents(
         &self,
         tenant_id: &str,
-        docs: impl IntoIterator<Item = (String, String, String)>,
+        docs: impl IntoIterator<
+            Item = (
+                u64,
+                String,
+                String,
+                String,
+                i64, // created_at
+                i64, // updated_at
+                Vec<String>,
+                String,
+                String,
+            ),
+        >,
     ) -> Result<IndexStats> {
         let mut writer = self.index.writer(50_000_000)?;
         let mut indexed = 0u64;
 
-        for (doc_id, title, content) in docs {
-            let key = Self::doc_key(tenant_id, &doc_id);
-            writer.delete_term(Term::from_field_text(self.doc_key_field, &key));
+        for (doc_id, title, content, doc_url, created_at, updated_at, tags, path, note) in docs {
+            let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
+            let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
+            let delete_tenant_query =
+                TermQuery::new(tenant_term, IndexRecordOption::Basic);
+            let delete_doc_id_query =
+                TermQuery::new(doc_id_term, IndexRecordOption::Basic);
+            let delete_query = BooleanQuery::new(vec![
+                (Occur::Must, Box::new(delete_tenant_query)),
+                (Occur::Must, Box::new(delete_doc_id_query)),
+            ]);
+            writer.delete_query(Box::new(delete_query))?;
 
-            let document = doc!(
+            let mut document = doc!(
                 self.tenant_id_field => tenant_id,
-                self.doc_key_field => key,
                 self.doc_id_field => doc_id,
+                self.doc_url_field => doc_url,
                 self.title_field => title,
-                self.content_field => content
+                self.content_field => content,
+                self.created_timestamp_field => created_at,
+                self.update_timestamp_field => updated_at,
+                self.path_field => path,
+                self.note_field => note
             );
+            for tag in &tags {
+                document.add_text(self.tags_field, tag);
+            }
             writer.add_document(document)?;
 
             indexed += 1;
@@ -173,7 +252,8 @@ impl IndexManager {
         let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
         let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
 
-        let parser = QueryParser::for_index(&self.index, vec![self.title_field, self.content_field]);
+        let parser =
+            QueryParser::for_index(&self.index, vec![self.title_field, self.content_field, self.note_field]);
         let full_query = parser.parse_query(query_str)?;
 
         let query = BooleanQuery::new(vec![(Occur::Must, Box::new(tenant_query)), (Occur::Must, full_query)]);
@@ -185,28 +265,32 @@ impl IndexManager {
         let mut results = Vec::with_capacity(hits.len());
         for (score, doc_address) in hits {
             let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-            let title = retrieved
-                .get_first(self.title_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let content = retrieved
-                .get_first(self.content_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let doc_id = retrieved
-                .get_first(self.doc_id_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let title = retrieved.get_first(self.title_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let content = retrieved.get_first(self.content_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let note = retrieved.get_first(self.note_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let doc_id = retrieved.get_first(self.doc_id_field).and_then(|v| v.as_u64()).unwrap_or(0);
+            let doc_url = retrieved.get_first(self.doc_url_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let created_at = retrieved.get_first(self.created_timestamp_field).and_then(|v| v.as_i64()).unwrap_or(0);
+            let updated_at = retrieved.get_first(self.update_timestamp_field).and_then(|v| v.as_i64()).unwrap_or(0);
+            let path = retrieved.get_first(self.path_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let tags = retrieved
+                .get_all(self.tags_field)
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>();
 
-            let snippet = content.chars().take(220).collect::<String>();
+            let snippet_source = if content.trim().is_empty() { &note } else { &content };
+            let snippet = snippet_source.chars().take(220).collect::<String>();
             results.push(SearchResultItem {
                 doc_id,
                 title,
+                doc_url,
                 snippet,
                 score,
+                created_at,
+                updated_at,
+                tags,
+                path,
+                note,
             });
         }
 

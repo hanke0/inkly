@@ -2,10 +2,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentIn {
-    /// Client-provided document id (unique within a tenant).
-    pub doc_id: String,
+    /// Document id.
+    pub doc_id: u64,
     pub title: String,
     pub content: String,
+    pub doc_url: String,
+    /// Unix timestamp (seconds) when the document was created.
+    pub created_at: i64,
+    /// Unix timestamp (seconds) when the document was last updated.
+    pub updated_at: i64,
+    pub tags: Vec<String>,
+    pub path: String,
+    pub note: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -28,10 +36,16 @@ pub struct SearchQuery {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchResult {
-    pub doc_id: String,
+    pub doc_id: u64,
     pub title: String,
+    pub doc_url: String,
     pub snippet: String,
     pub score: f32,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub tags: Vec<String>,
+    pub path: String,
+    pub note: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

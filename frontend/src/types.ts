@@ -1,7 +1,13 @@
 export type DocumentIn = {
-  doc_id: string;
+  doc_id: number;
   title: string;
   content: string;
+  doc_url: string;
+  created_at: number;
+  updated_at: number;
+  tags: string[];
+  path: string;
+  note: string;
 };
 
 export type BulkIndexIn = {
@@ -19,10 +25,16 @@ export type SearchQuery = {
 };
 
 export type SearchResult = {
-  doc_id: string;
+  doc_id: number;
   title: string;
+  doc_url: string;
   snippet: string;
   score: number;
+  created_at: number;
+  updated_at: number;
+  tags: string[];
+  path: string;
+  note: string;
 };
 
 export type SearchResponse = {

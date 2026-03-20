@@ -24,11 +24,15 @@ pub async fn healthz() -> impl IntoResponse {
 }
 
 fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
-    const MAX_DOC_ID: usize = 128;
     const MAX_TITLE: usize = 200;
     const MAX_CONTENT: usize = 50_000;
+    const MAX_DOC_URL: usize = 2048;
+    const MAX_PATH: usize = 1024;
+    const MAX_NOTE: usize = 20_000;
+    const MAX_TAGS: usize = 50;
+    const MAX_TAG_LEN: usize = 64;
 
-    if input.doc_id.trim().is_empty() || input.doc_id.len() > MAX_DOC_ID {
+    if input.doc_id == 0 {
         return Err(ApiError::bad_request("invalid doc_id"));
     }
     if input.title.len() > MAX_TITLE {
@@ -36,6 +40,26 @@ fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
     }
     if input.content.len() > MAX_CONTENT {
         return Err(ApiError::bad_request("invalid content"));
+    }
+    if input.doc_url.len() > MAX_DOC_URL {
+        return Err(ApiError::bad_request("invalid doc_url"));
+    }
+    if input.path.len() > MAX_PATH {
+        return Err(ApiError::bad_request("invalid path"));
+    }
+    if input.note.len() > MAX_NOTE {
+        return Err(ApiError::bad_request("invalid note"));
+    }
+    if input.tags.len() > MAX_TAGS {
+        return Err(ApiError::bad_request("invalid tags"));
+    }
+    for t in &input.tags {
+        if t.trim().is_empty() || t.len() > MAX_TAG_LEN {
+            return Err(ApiError::bad_request("invalid tags"));
+        }
+    }
+    if input.updated_at < input.created_at {
+        return Err(ApiError::bad_request("invalid timestamps"));
     }
     Ok(())
 }
@@ -51,6 +75,12 @@ pub async fn index_document(
     let doc_id = input.doc_id;
     let title = input.title;
     let content = input.content;
+    let doc_url = input.doc_url;
+    let created_at = input.created_at;
+    let updated_at = input.updated_at;
+    let tags = input.tags;
+    let path = input.path;
+    let note = input.note;
     let index = state.index.clone();
 
     info!(
@@ -60,9 +90,22 @@ pub async fn index_document(
         "index_document"
     );
 
-    let stats = tokio::task::spawn_blocking(move || index.index_document(&tenant_id, &doc_id, &title, &content))
-        .await
-        .map_err(|_| ApiError::Internal)??;
+    let stats = tokio::task::spawn_blocking(move || {
+        index.index_document(
+            &tenant_id,
+            doc_id,
+            &title,
+            &content,
+            &doc_url,
+            created_at,
+            updated_at,
+            &tags,
+            &path,
+            &note,
+        )
+    })
+    .await
+    .map_err(|_| ApiError::Internal)??;
 
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
@@ -84,10 +127,22 @@ pub async fn index_documents_bulk(
     }
 
     let tenant_id = user.tenant_id;
-    let docs: Vec<(String, String, String)> = input
+    let docs: Vec<(u64, String, String, String, i64, i64, Vec<String>, String, String)> = input
         .documents
         .into_iter()
-        .map(|d| (d.doc_id, d.title, d.content))
+        .map(|d| {
+            (
+                d.doc_id,
+                d.title,
+                d.content,
+                d.doc_url,
+                d.created_at,
+                d.updated_at,
+                d.tags,
+                d.path,
+                d.note,
+            )
+        })
         .collect();
     let index = state.index.clone();
 
@@ -135,8 +190,14 @@ pub async fn search(
         .map(|it| SearchResult {
             doc_id: it.doc_id,
             title: it.title,
+            doc_url: it.doc_url,
             snippet: it.snippet,
             score: it.score,
+            created_at: it.created_at,
+            updated_at: it.updated_at,
+            tags: it.tags,
+            path: it.path,
+            note: it.note,
         })
         .collect();
 
