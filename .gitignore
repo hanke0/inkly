@@ -47,6 +47,12 @@ web_modules/
 # TypeScript cache
 *.tsbuildinfo
 
+# Rust build output
+target/
+
+# Frontend build output
+frontend/dist/
+
 # Optional npm cache directory
 .npm
 
