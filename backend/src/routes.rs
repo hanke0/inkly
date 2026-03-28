@@ -37,14 +37,6 @@ pub async fn session(Extension(user): Extension<AuthUser>) -> Result<Json<Sessio
     Ok(Json(SessionResponse { ok: true }))
 }
 
-const MAX_TITLE: usize = 200;
-const MAX_CONTENT: usize = 50_000;
-const MAX_DOC_URL: usize = 2048;
-const MAX_PATH: usize = 1024;
-const MAX_NOTE: usize = 20_000;
-const MAX_TAGS: usize = 50;
-const MAX_TAG_LEN: usize = 64;
-
 /// Normalizes a logical directory path: `/` or `/segment/.../` (trailing slash except root).
 fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
     let s = raw.trim();
@@ -73,29 +65,47 @@ fn use_automatic_doc_id(doc_id: Option<u64>) -> bool {
     matches!(doc_id, None | Some(0))
 }
 
-fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
-    if input.title.len() > MAX_TITLE {
-        return Err(ApiError::bad_request("invalid title"));
-    }
-    if input.content.len() > MAX_CONTENT {
-        return Err(ApiError::bad_request("invalid content"));
-    }
-    if input.doc_url.len() > MAX_DOC_URL {
-        return Err(ApiError::bad_request("invalid doc_url"));
-    }
-    if input.path.len() > MAX_PATH {
+/// Logical path after `normalize_dir_path`: `/` or `/segment/.../` (no `.` / `..` segments).
+fn validate_document_path(path: &str) -> Result<(), ApiError> {
+    if path.is_empty() || !path.starts_with('/') {
         return Err(ApiError::bad_request("invalid path"));
     }
-    if input.note.len() > MAX_NOTE {
-        return Err(ApiError::bad_request("invalid note"));
+    if path == "/" {
+        return Ok(());
     }
-    if input.tags.len() > MAX_TAGS {
+    if !path.ends_with('/') {
+        return Err(ApiError::bad_request("invalid path"));
+    }
+    for seg in path.split('/').filter(|s| !s.is_empty()) {
+        if seg == "." || seg == ".." {
+            return Err(ApiError::bad_request("invalid path"));
+        }
+    }
+    Ok(())
+}
+
+/// Single tag: non-empty after trim; only Unicode letters, numbers, and `_` (no other punctuation or symbols).
+fn validate_tag_format(tag: &str) -> Result<(), ApiError> {
+    let t = tag.trim();
+    if t.is_empty() {
         return Err(ApiError::bad_request("invalid tags"));
     }
+    if t.chars().any(|c| c.is_control()) {
+        return Err(ApiError::bad_request("invalid tags"));
+    }
+    if !t
+        .chars()
+        .all(|c| c == '_' || c.is_alphanumeric())
+    {
+        return Err(ApiError::bad_request("invalid tags"));
+    }
+    Ok(())
+}
+
+fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
+    validate_document_path(&input.path)?;
     for t in &input.tags {
-        if t.trim().is_empty() || t.len() > MAX_TAG_LEN {
-            return Err(ApiError::bad_request("invalid tags"));
-        }
+        validate_tag_format(t)?;
     }
     Ok(())
 }
@@ -187,9 +197,6 @@ pub async fn index_document_upload(
                     tracing::warn!(error = %e, "multipart file bytes read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
-                if bytes.len() > MAX_CONTENT {
-                    return Err(ApiError::bad_request("invalid content"));
-                }
                 file_bytes = Some(bytes.to_vec());
             }
             "doc_id" => {
