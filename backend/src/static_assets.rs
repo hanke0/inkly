@@ -5,7 +5,7 @@ use axum::response::Response;
 use axum::response::IntoResponse;
 use include_dir::{include_dir, Dir};
 
-static DIST: Dir = include_dir!("$INKLY_FRONTEND_DIST_DIR");
+static DIST: Dir = include_dir!("$FRONTEND_DIST_DIR");
 
 fn mime_for_path(path: &str) -> HeaderValue {
     let mime = mime_guess::from_path(path).first_or_octet_stream();

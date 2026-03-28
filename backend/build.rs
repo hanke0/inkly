@@ -3,13 +3,13 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=INKLY_SKIP_FRONTEND_BUILD");
+    println!("cargo:rerun-if-env-changed=SKIP_FRONTEND_BUILD");
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let frontend_dir = manifest_dir.join("../frontend");
     let dist_dir = frontend_dir.join("dist");
     println!(
-        "cargo:rustc-env=INKLY_FRONTEND_DIST_DIR={}",
+        "cargo:rustc-env=FRONTEND_DIST_DIR={}",
         dist_dir.display()
     );
 
@@ -22,10 +22,10 @@ fn main() {
     println!("cargo:rerun-if-changed={}", frontend_dir.join("tailwind.config.cjs").display());
     println!("cargo:rerun-if-changed={}", frontend_dir.join("postcss.config.js").display());
 
-    let skip = env::var("INKLY_SKIP_FRONTEND_BUILD").ok().as_deref() == Some("1");
+    let skip = env::var("SKIP_FRONTEND_BUILD").ok().as_deref() == Some("1");
     if skip {
         if !dist_dir.exists() {
-            panic!("INKLY_SKIP_FRONTEND_BUILD=1 but frontend dist not found at {}", dist_dir.display());
+            panic!("SKIP_FRONTEND_BUILD=1 but frontend dist not found at {}", dist_dir.display());
         }
         return;
     }

@@ -5,8 +5,7 @@ use axum::extract::State;
 use axum::http::header::AUTHORIZATION;
 use axum::middleware::Next;
 use axum::response::Response;
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
-use serde::Deserialize;
+use base64::Engine;
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -15,13 +14,6 @@ use crate::state::AppState;
 pub struct AuthUser {
     pub user_id: String,
     pub tenant_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct JwtClaims {
-    sub: String,
-    tenant_id: String,
-    _exp: usize,
 }
 
 pub async fn auth_middleware(
@@ -35,26 +27,48 @@ pub async fn auth_middleware(
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| ApiError::unauthorized("missing Authorization header"))?;
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| ApiError::unauthorized("invalid Authorization header format"))?;
+    let b64 = auth_header
+        .strip_prefix("Basic ")
+        .ok_or_else(|| ApiError::unauthorized("invalid Authorization header format"))?
+        .trim();
 
-    let mut validation = Validation::new(Algorithm::HS256);
-    validation.validate_exp = true;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|_| ApiError::unauthorized("invalid credentials"))?;
 
-    let decoded = decode::<JwtClaims>(
-        token,
-        &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
-        &validation,
-    )
-    .map_err(|_| ApiError::unauthorized("invalid token"))?;
+    let creds = String::from_utf8(decoded).map_err(|_| ApiError::unauthorized("invalid credentials"))?;
+
+    let (username, password) = creds
+        .split_once(':')
+        .map(|(u, p)| (u, p))
+        .unwrap_or((creds.as_str(), ""));
+
+    if !basic_credentials_match(
+        username,
+        password,
+        state.expected_username(),
+        state.expected_password(),
+    ) {
+        return Err(ApiError::unauthorized("invalid credentials"));
+    }
 
     let user = AuthUser {
-        user_id: decoded.claims.sub,
-        tenant_id: decoded.claims.tenant_id,
+        user_id: username.to_string(),
+        tenant_id: username.to_string(),
     };
 
     req.extensions_mut().insert(user);
     Ok(next.run(req).await)
 }
 
+fn basic_credentials_match(provided_user: &str, provided_pass: &str, expected_user: &str, expected_pass: &str) -> bool {
+    use subtle::ConstantTimeEq;
+
+    if provided_user.len() != expected_user.len() || provided_pass.len() != expected_pass.len() {
+        return false;
+    }
+
+    let user_ok = provided_user.as_bytes().ct_eq(expected_user.as_bytes());
+    let pass_ok = provided_pass.as_bytes().ct_eq(expected_pass.as_bytes());
+    bool::from(user_ok & pass_ok)
+}
