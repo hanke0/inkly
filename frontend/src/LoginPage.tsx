@@ -68,43 +68,49 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-300">
+      <div className="flex min-h-screen items-center justify-center bg-inkly-shell text-inkly-muted">
         <div className="text-sm">Checking sign-in…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-inkly-shell text-inkly-ink">
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12">
         <div className="mb-8 text-center">
-          <div className="text-sm text-zinc-400">Inkly</div>
-          <h1 className="mt-1 text-2xl font-semibold">Sign in</h1>
-          <p className="mt-2 text-sm text-zinc-400">Use the same username and password as the server configuration.</p>
+          <h1 className="font-serif text-3xl font-medium tracking-tight text-inkly-ink">Inkly</h1>
+          <p className="mt-2 text-sm leading-relaxed text-inkly-muted">
+            Your personal web archive, self-hosted
+          </p>
+          <h2 className="mt-8 text-xl font-semibold text-inkly-ink-soft">Sign in</h2>
+          <p className="mt-2 text-sm text-inkly-muted">Use the same username and password as the server.</p>
         </div>
 
-        <form onSubmit={onSubmit} className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+        <form
+          onSubmit={onSubmit}
+          className="rounded-xl border border-inkly-border bg-inkly-paper p-6 shadow-sm"
+        >
           {error ? (
-            <div className="mb-4 rounded-lg border border-red-900 bg-red-950/30 p-3 text-sm text-red-200">{error}</div>
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>
           ) : null}
 
-          <label className="block text-sm text-zinc-400">Username</label>
+          <label className="block text-sm text-inkly-muted">Username</label>
           <input
             type="text"
             name="username"
             autoComplete="username"
-            className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+            className="mt-2 w-full rounded-lg border border-inkly-border bg-white p-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             disabled={loading}
           />
 
-          <label className="mt-4 block text-sm text-zinc-400">Password</label>
+          <label className="mt-4 block text-sm text-inkly-muted">Password</label>
           <input
             type="password"
             name="password"
             autoComplete="current-password"
-            className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+            className="mt-2 w-full rounded-lg border border-inkly-border bg-white p-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={loading}
@@ -113,7 +119,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-6 w-full rounded-lg bg-zinc-200 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+            className="mt-6 w-full rounded-lg bg-inkly-accent py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-inkly-accent-hover disabled:opacity-50"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>

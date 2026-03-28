@@ -1,142 +1,62 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { clearStoredCredentials, fetchCatalog, indexDocument, indexDocumentUpload, search } from "./api";
-import type { CatalogResponse, DocumentIn, IndexResponse, SearchQuery, SearchResponse } from "./types";
-
-type Mode = "search" | "index";
-
-function pathBreadcrumbs(normalizedPath: string): { label: string; path: string }[] {
-  const out: { label: string; path: string }[] = [{ label: "Home", path: "/" }];
-  if (normalizedPath === "/") {
-    return out;
-  }
-  const inner = normalizedPath.replace(/^\/+|\/+$/g, "");
-  const parts = inner.split("/").filter(Boolean);
-  let prefix = "";
-  for (const p of parts) {
-    prefix = `${prefix}/${p}`;
-    out.push({ label: p, path: `${prefix}/` });
-  }
-  return out;
-}
+import { clearStoredCredentials, search } from "./api";
+import { BrandHeader } from "./components/BrandHeader";
+import { CatalogSidebar } from "./components/CatalogSidebar";
+import { NewDocumentModal } from "./components/NewDocumentModal";
+import { SearchResultsDialog } from "./components/SearchResultsDialog";
+import { useCatalog } from "./hooks/useCatalog";
+import { useNewDocumentForm } from "./hooks/useNewDocumentForm";
+import type { SearchQuery, SearchResponse } from "./types";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const pageOrigin = useMemo(
-    () => (typeof window !== "undefined" ? window.location.origin : ""),
-    [],
-  );
 
-  const [mode, setMode] = useState<Mode>("search");
-
-  const [docId, setDocId] = useState<number>(1);
-  const [title, setTitle] = useState<string>("Hello");
-  const [content, setContent] = useState<string>("This is a test document.");
-  const [contentFile, setContentFile] = useState<File | null>(null);
-  const contentFileInputRef = useRef<HTMLInputElement>(null);
-  const [docUrl, setDocUrl] = useState<string>("https://example.com/doc/1");
-  const [tagsText, setTagsText] = useState<string>("test,example");
-  const [path, setPath] = useState<string>("/");
-  const [note, setNote] = useState<string>("Optional note...");
-
-  const [q, setQ] = useState<string>("test");
+  const [q, setQ] = useState<string>("");
   const [limit, setLimit] = useState<number>(10);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [actionStatus, setActionStatus] = useState<string>("");
 
-  const [indexRes, setIndexRes] = useState<IndexResponse | null>(null);
   const [searchRes, setSearchRes] = useState<SearchResponse | null>(null);
+  const [searchResultsOpen, setSearchResultsOpen] = useState(false);
+  const [indexModalOpen, setIndexModalOpen] = useState(false);
 
   const catalogUrlPath = searchParams.get("path")?.trim() || "/";
-  const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogErr, setCatalogErr] = useState("");
+  const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(catalogUrlPath);
 
-  const loadCatalog = useCallback(async () => {
-    setCatalogErr("");
-    setCatalogLoading(true);
-    try {
-      const c = await fetchCatalog(catalogUrlPath);
-      setCatalog(c);
-    } catch (e) {
-      setCatalog(null);
-      setCatalogErr(e instanceof Error ? e.message : "Catalog request failed.");
-    } finally {
-      setCatalogLoading(false);
-    }
-  }, [catalogUrlPath]);
-
-  useEffect(() => {
-    void loadCatalog();
-  }, [loadCatalog]);
+  const newDocForm = useNewDocumentForm(() => {
+    void reloadCatalog();
+    setIndexModalOpen(false);
+    setActionStatus("Indexed successfully.");
+  });
 
   function logout() {
     clearStoredCredentials();
     navigate("/login", { replace: true });
   }
 
-  async function onIndexSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setIndexRes(null);
-    setSearchRes(null);
-    setLoading(true);
+  const docLink = (docIdNum: number, folderPath: string) =>
+    `/doc/${docIdNum}?path=${encodeURIComponent(folderPath)}`;
 
-    const tags = tagsText
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
-    try {
-      let res: IndexResponse;
-      if (contentFile) {
-        const fd = new FormData();
-        fd.append("file", contentFile);
-        fd.append("doc_id", String(docId));
-        fd.append("title", title.trim());
-        fd.append("doc_url", docUrl.trim());
-        fd.append("path", path.trim());
-        fd.append("note", note);
-        fd.append("tags", tagsText);
-        res = await indexDocumentUpload(fd);
-      } else {
-        if (!content.trim()) {
-          setError("Add content in the text area or choose a UTF-8 text file.");
-          setActionStatus("");
-          setLoading(false);
-          return;
-        }
-        const payload: DocumentIn = {
-          doc_id: docId,
-          title: title.trim(),
-          content,
-          doc_url: docUrl.trim(),
-          tags,
-          path: path.trim(),
-          note,
-        };
-        res = await indexDocument(payload);
-      }
-      setIndexRes(res);
-      setActionStatus("Indexed successfully.");
-      void loadCatalog();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Index request failed.");
-      setActionStatus("");
-    } finally {
-      setLoading(false);
-    }
+  function setCatalogPath(p: string) {
+    const next = new URLSearchParams(searchParams);
+    next.set("path", p);
+    setSearchParams(next);
   }
 
-  async function onSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function openNewDocumentModal() {
+    newDocForm.prepareOpen({ path: catalogUrlPath });
+    setIndexModalOpen(true);
+  }
+
+  async function runSearch() {
     setError("");
-    setIndexRes(null);
     setSearchRes(null);
+    setSearchResultsOpen(false);
     setLoading(true);
 
     const query: SearchQuery = {
@@ -147,6 +67,7 @@ export default function Dashboard() {
     try {
       const res = await search(query);
       setSearchRes(res);
+      setSearchResultsOpen(true);
       setActionStatus("Search complete.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search request failed.");
@@ -157,358 +78,69 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-sm text-zinc-400">Inkly SPA</div>
-            <div className="text-2xl font-semibold">Axum + Tantivy</div>
-            <div className="mt-2 text-sm text-zinc-400">API: same origin ({pageOrigin || "…"})</div>
+    <div className="flex min-h-screen flex-col bg-inkly-shell text-inkly-ink">
+      <BrandHeader
+        onSignOut={logout}
+        onNewDocument={openNewDocumentModal}
+        search={{
+          q,
+          onQChange: setQ,
+          limit,
+          onLimitChange: setLimit,
+          onSearch: () => {
+            void runSearch();
+          },
+          loading,
+        }}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="flex max-h-[38vh] shrink-0 flex-col overflow-hidden border-b border-inkly-line bg-inkly-sidebar md:max-h-none md:w-72 md:border-b-0 md:border-r">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-5">
+            <CatalogSidebar
+              catalog={catalog}
+              catalogLoading={catalogLoading}
+              catalogErr={catalogErr}
+              onPathChange={setCatalogPath}
+              docLink={docLink}
+            />
           </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800"
-          >
-            Sign out
-          </button>
-        </div>
+        </aside>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-3">
-              <button
-                className={`rounded-lg px-3 py-1 text-sm ${mode === "search" ? "bg-zinc-200 text-zinc-900" : "bg-zinc-800 text-zinc-200"}`}
-                onClick={() => setMode("search")}
-                type="button"
-              >
-                Search
-              </button>
-              <button
-                className={`rounded-lg px-3 py-1 text-sm ${mode === "index" ? "bg-zinc-200 text-zinc-900" : "bg-zinc-800 text-zinc-200"}`}
-                onClick={() => setMode("index")}
-                type="button"
-              >
-                Index
-              </button>
-            </div>
-            {actionStatus ? <div className="text-xs text-zinc-400">{actionStatus}</div> : null}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper">
+          <div className="shrink-0 border-b border-inkly-border-soft bg-inkly-paper px-5 py-2 md:px-8">
+            {actionStatus ? <span className="text-xs text-inkly-muted">{actionStatus}</span> : null}
           </div>
-        </div>
 
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-900 bg-red-950/30 p-3 text-sm text-red-200">
-            {error}
-          </div>
-        ) : null}
-
-        {mode === "search" ? (
-          <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-            <div className="text-sm font-medium text-zinc-200">Search</div>
-            <form className="mt-3" onSubmit={onSearchSubmit}>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-zinc-300">q</label>
-                  <input
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-300">limit</label>
-                  <input
-                    type="number"
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={limit}
-                    onChange={(e) => setLimit(Number(e.target.value))}
-                    min={1}
-                    max={50}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
-                >
-                  {loading ? "Searching..." : "Search"}
-                </button>
-                <div className="text-xs text-zinc-400">Tenant scoping uses the Basic auth username.</div>
-              </div>
-            </form>
-
-            {searchRes ? (
-              <div className="mt-4 border-t border-zinc-800 pt-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-zinc-200 text-sm font-medium">Results</div>
-                  <div className="text-xs text-zinc-400">total_hits: {searchRes.total_hits}</div>
-                </div>
-                <div className="mt-3 space-y-3">
-                  {searchRes.results.length === 0 ? (
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
-                      No matches.
-                    </div>
-                  ) : null}
-                  {searchRes.results.map((r) => (
-                    <div
-                      key={r.doc_id}
-                      className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <Link
-                            to={`/doc/${r.doc_id}?path=${encodeURIComponent(r.path || "/")}`}
-                            className="truncate text-sm font-medium text-sky-400 hover:underline"
-                          >
-                            {r.title}
-                          </Link>
-                          <div className="mt-1 text-xs text-zinc-400 font-mono">{r.doc_id}</div>
-                          <div className="mt-1 text-xs text-zinc-500 font-mono truncate">
-                            {r.doc_url}
-                          </div>
-                        </div>
-                        <div className="text-xs text-zinc-400 font-mono">{r.score.toFixed(3)}</div>
-                      </div>
-                      <div className="mt-2 text-sm text-zinc-300 font-mono">{r.snippet}</div>
-                      <div className="mt-2 text-xs text-zinc-400">
-                        <div className="font-mono truncate">path: {r.path}</div>
-                        <div className="font-mono truncate">tags: {r.tags.join(", ")}</div>
-                        <div className="font-mono mt-1 text-zinc-500 truncate">{r.note}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          <div className="flex-1 overflow-y-auto bg-inkly-paper px-5 py-6 md:px-8">
+            {error ? (
+              <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {error}
               </div>
             ) : null}
-          </div>
-        ) : null}
 
-        {mode === "index" ? (
-          <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-            <form onSubmit={onIndexSubmit}>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-zinc-300">doc_id</label>
-                  <input
-                    type="number"
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={docId}
-                    onChange={(e) => setDocId(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-300">title</label>
-                  <input
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="block text-sm text-zinc-300">content</label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      ref={contentFileInputRef}
-                      type="file"
-                      accept=".txt,.md,.markdown,text/plain,text/markdown"
-                      className="max-w-full text-xs text-zinc-400 file:mr-2 file:rounded-md file:border-0 file:bg-zinc-800 file:px-2 file:py-1 file:text-zinc-200"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        setContentFile(f ?? null);
-                      }}
-                    />
-                    {contentFile ? (
-                      <button
-                        type="button"
-                        className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
-                        onClick={() => {
-                          setContentFile(null);
-                          if (contentFileInputRef.current) {
-                            contentFileInputRef.current.value = "";
-                          }
-                        }}
-                      >
-                        Clear file
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                {contentFile ? (
-                  <div className="mt-2 text-xs text-zinc-400">
-                    Indexing will use the file ({contentFile.name}). The textarea is ignored until you clear the file.
-                  </div>
-                ) : null}
-                <textarea
-                  className="mt-2 h-28 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 font-mono text-sm outline-none focus:border-zinc-700 disabled:opacity-50"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  disabled={Boolean(contentFile)}
-                />
-              </div>
-
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-zinc-300">doc_url</label>
-                  <input
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={docUrl}
-                    onChange={(e) => setDocUrl(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-300">path</label>
-                  <input
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={path}
-                    onChange={(e) => setPath(e.target.value)}
-                  />
-                  <div className="mt-1 text-xs text-zinc-500">
-                    Directory path; the API normalizes to <span className="font-mono">/</span> or{" "}
-                    <span className="font-mono">/segment/.../</span>.
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 text-xs text-zinc-400">
-                `created_at` / `updated_at` are set automatically by the API.
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-sm text-zinc-300">tags (comma-separated)</label>
-                <input
-                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                  value={tagsText}
-                  onChange={(e) => setTagsText(e.target.value)}
-                />
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-sm text-zinc-300">note</label>
-                <textarea
-                  className="mt-2 h-20 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 font-mono text-sm outline-none focus:border-zinc-700"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                />
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
-                >
-                  {loading ? "Indexing..." : "Index document"}
-                </button>
-                <div className="text-xs text-zinc-400">Will replace existing doc with same `doc_id` within tenant.</div>
-              </div>
-            </form>
-
-            {indexRes ? (
-              <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm">
-                <div className="text-zinc-200 font-medium">Index response</div>
-                <div className="mt-2 font-mono text-xs text-zinc-300">
-                  {JSON.stringify(indexRes, null, 2)}
-                </div>
-              </div>
+            {!error ? (
+              <p className="text-sm leading-relaxed text-inkly-muted">
+                Open a page from the catalog on the left, or search from the header. Use <span className="font-medium text-inkly-ink-soft">New</span> to add a document.
+              </p>
             ) : null}
           </div>
-        ) : null}
-
-        <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-medium text-zinc-200">Catalog</div>
-            {catalogLoading ? <div className="text-xs text-zinc-500">Loading…</div> : null}
-          </div>
-
-          {catalogErr ? (
-            <div className="mt-3 rounded-lg border border-red-900 bg-red-950/20 p-2 text-sm text-red-200">
-              {catalogErr}
-            </div>
-          ) : null}
-
-          {catalog ? (
-            <div className="mt-3">
-              <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-400">
-                {pathBreadcrumbs(catalog.path).map((crumb, i, arr) => (
-                  <span key={crumb.path} className="flex items-center gap-1">
-                    {i > 0 ? <span className="text-zinc-600">/</span> : null}
-                    <button
-                      type="button"
-                      className={
-                        i === arr.length - 1
-                          ? "font-medium text-zinc-200"
-                          : "text-sky-400 hover:underline"
-                      }
-                      onClick={() => {
-                        const next = new URLSearchParams(searchParams);
-                        next.set("path", crumb.path);
-                        setSearchParams(next);
-                      }}
-                    >
-                      {crumb.label}
-                    </button>
-                  </span>
-                ))}
-              </nav>
-
-              <div className="mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Subdirectories
-              </div>
-              <ul className="mt-2 space-y-1">
-                {catalog.subdirs.length === 0 ? (
-                  <li className="text-sm text-zinc-500">None</li>
-                ) : (
-                  catalog.subdirs.map((s) => (
-                    <li key={s.path}>
-                      <button
-                        type="button"
-                        className="text-left text-sm text-sky-400 hover:underline"
-                        onClick={() => {
-                          const next = new URLSearchParams(searchParams);
-                          next.set("path", s.path);
-                          setSearchParams(next);
-                        }}
-                      >
-                        {s.name}
-                      </button>
-                      <span className="ml-2 font-mono text-xs text-zinc-500">{s.path}</span>
-                    </li>
-                  ))
-                )}
-              </ul>
-
-              <div className="mt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Files in this folder
-              </div>
-              <ul className="mt-2 space-y-1">
-                {catalog.files.length === 0 ? (
-                  <li className="text-sm text-zinc-500">No documents with this path.</li>
-                ) : (
-                  catalog.files.map((f) => (
-                    <li key={f.doc_id}>
-                      <Link
-                        to={`/doc/${f.doc_id}?path=${encodeURIComponent(catalog.path)}`}
-                        className="text-sm text-sky-400 hover:underline"
-                      >
-                        {f.title}
-                      </Link>
-                      <span className="ml-2 font-mono text-xs text-zinc-500">{f.doc_id}</span>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          ) : !catalogLoading && !catalogErr ? (
-            <div className="mt-3 text-sm text-zinc-500">No catalog data.</div>
-          ) : null}
-        </div>
+        </main>
       </div>
+
+      <SearchResultsDialog
+        open={searchResultsOpen}
+        onClose={() => setSearchResultsOpen(false)}
+        response={searchRes}
+        docLink={docLink}
+        queryHint={q.trim() || undefined}
+      />
+
+      <NewDocumentModal
+        open={indexModalOpen}
+        onClose={() => setIndexModalOpen(false)}
+        form={newDocForm}
+      />
     </div>
   );
 }

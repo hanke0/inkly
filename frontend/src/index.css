@@ -9,5 +9,45 @@ body {
 
 body {
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer components {
+  /**
+   * Long-form reading: serif body + UI sans title.
+   * Justification helps CJK rag; pre-wrap keeps indexed line breaks.
+   */
+  .inkly-reading {
+    @apply mx-auto w-full max-w-[47rem];
+  }
+
+  .inkly-reading__title {
+    @apply font-inkly-read-ui font-semibold tracking-tight text-inkly-ink;
+    font-size: clamp(1.375rem, 1.1rem + 1.1vw, 1.875rem);
+    line-height: 1.28;
+  }
+
+  .inkly-reading__body {
+    @apply font-inkly-read text-inkly-ink-soft;
+    font-size: 1.1875rem;
+    line-height: 1.8;
+    text-align: justify;
+    text-justify: inter-character;
+    hyphens: auto;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+  }
+
+  .inkly-reading__note {
+    @apply font-inkly-read text-inkly-muted;
+    font-size: 1rem;
+    line-height: 1.75;
+    text-align: justify;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+  }
 }
 

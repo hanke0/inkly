@@ -39,7 +39,7 @@ export default function RequireAuth() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-300">
+      <div className="flex min-h-screen items-center justify-center bg-inkly-shell text-inkly-muted">
         <div className="text-sm">Checking sign-in…</div>
       </div>
     );
