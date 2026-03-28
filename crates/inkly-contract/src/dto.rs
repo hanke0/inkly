@@ -50,6 +50,12 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
 }
 
+/// Successful Basic auth check (`GET /v1/session`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionResponse {
+    pub ok: bool,
+}
+
 fn default_limit() -> u32 {
     10
 }

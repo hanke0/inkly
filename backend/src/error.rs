@@ -28,7 +28,8 @@ impl ApiError {
 }
 
 impl From<SearchError> for ApiError {
-    fn from(_value: SearchError) -> Self {
+    fn from(value: SearchError) -> Self {
+        tracing::error!(error = %value, "search/index operation failed");
         // Do not leak internal indexing/search details to clients.
         ApiError::Internal
     }

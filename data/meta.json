@@ -3,7 +3,13 @@
     "docstore_compression": "lz4",
     "docstore_blocksize": 16384
   },
-  "segments": [],
+  "segments": [
+    {
+      "segment_id": "4deb960f-35dc-483c-949d-ed98e2c33f91",
+      "max_doc": 1,
+      "deletes": null
+    }
+  ],
   "schema": [
     {
       "name": "tenant_id",
@@ -22,8 +28,8 @@
       "name": "doc_id",
       "type": "u64",
       "options": {
-        "indexed": false,
-        "fieldnorms": false,
+        "indexed": true,
+        "fieldnorms": true,
         "fast": true,
         "stored": true
       }
@@ -127,5 +133,5 @@
       }
     }
   ],
-  "opstamp": 0
+  "opstamp": 12
 }

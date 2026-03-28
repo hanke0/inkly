@@ -4,12 +4,10 @@ import type {
   IndexResponse,
   SearchQuery,
   SearchResponse,
+  SessionResponse,
 } from "./types";
 
 type ErrorBody = { error?: string };
-
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://127.0.0.1:8080";
 
 const LS_USERNAME_KEY = "inkly.basic.username";
 const LS_PASSWORD_KEY = "inkly.basic.password";
@@ -45,8 +43,7 @@ async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
   const headers = new Headers(init.headers);
   applyBasicAuth(headers);
 
-  const url = `${API_BASE_URL}${path}`;
-  const res = await fetch(url, { ...init, headers });
+  const res = await fetch(path, { ...init, headers });
 
   let body: unknown = null;
   const contentType = res.headers.get("content-type") ?? "";
@@ -77,8 +74,7 @@ export async function indexDocumentUpload(formData: FormData): Promise<IndexResp
   const headers = new Headers();
   applyBasicAuth(headers);
 
-  const url = `${API_BASE_URL}/v1/documents/upload`;
-  const res = await fetch(url, { method: "POST", headers, body: formData });
+  const res = await fetch("/v1/documents/upload", { method: "POST", headers, body: formData });
 
   let body: unknown = null;
   const contentType = res.headers.get("content-type") ?? "";
@@ -112,6 +108,38 @@ export async function search(query: SearchQuery): Promise<SearchResponse> {
   return apiFetch<SearchResponse>(`/v1/search?${params.toString()}`, {
     method: "GET",
   });
+}
+
+export async function fetchSession(): Promise<SessionResponse> {
+  return apiFetch<SessionResponse>("/v1/session", { method: "GET" });
+}
+
+export function hasStoredCredentials(): boolean {
+  try {
+    const u = window.localStorage.getItem(LS_USERNAME_KEY);
+    const p = window.localStorage.getItem(LS_PASSWORD_KEY);
+    return Boolean(u?.trim()) && p !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function storeCredentials(username: string, password: string): void {
+  window.localStorage.setItem(LS_USERNAME_KEY, username.trim());
+  window.localStorage.setItem(LS_PASSWORD_KEY, password);
+}
+
+export function clearStoredCredentials(): void {
+  window.localStorage.removeItem(LS_USERNAME_KEY);
+  window.localStorage.removeItem(LS_PASSWORD_KEY);
+}
+
+/** Returns true when the server accepts these Basic credentials (does not persist them). */
+export async function verifyLogin(username: string, password: string): Promise<boolean> {
+  const headers = new Headers();
+  headers.set("Authorization", `Basic ${utf8ToBase64(`${username.trim()}:${password}`)}`);
+  const res = await fetch("/v1/session", { method: "GET", headers });
+  return res.ok;
 }
 
 export { LS_PASSWORD_KEY, LS_USERNAME_KEY };

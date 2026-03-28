@@ -35,6 +35,9 @@ All protected endpoints require HTTP Basic auth.
 - `GET /healthz`
   - Response: `{ "status": "ok" }`
 
+- `GET /v1/session`
+  - Validates Basic credentials; response `{ "ok": true }` when valid.
+
 - `POST /v1/documents`
   - Body: `{ "doc_id": "...", "title": "...", "content": "..." }`
   - Response: `{ "indexed": number, "deleted": number }`
@@ -53,13 +56,11 @@ All protected endpoints require HTTP Basic auth.
 2. Start dev server:
    - `npm run dev`
 
-Optional env:
-- `VITE_API_BASE_URL` (defaults to `http://127.0.0.1:8080`)
+The dev server proxies `/v1` and `/healthz` to `http://127.0.0.1:8080`, so the SPA can call the API with same-origin relative URLs while the backend runs separately.
 
 The UI supports:
-- Saving Basic credentials to `localStorage` (`inkly.basic.username`, `inkly.basic.password`)
-- Indexing a single document
-- Searching within the tenant derived from the Basic username
+- A `/login` page; signed-in credentials are stored in `localStorage` (`inkly.basic.username`, `inkly.basic.password`) and sent as `Authorization: Basic` on API calls
+- Indexing and search on `/` after authentication
 
 Single-binary mode:
 - After building the backend, the compiled frontend is served from the backend at `/` (SPA fallback).

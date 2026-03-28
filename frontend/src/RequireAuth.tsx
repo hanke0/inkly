@@ -1,0 +1,49 @@
+import { useEffect, useState } from "react";
+import { Navigate, Outlet, useNavigate } from "react-router-dom";
+
+import { clearStoredCredentials, fetchSession, hasStoredCredentials } from "./api";
+
+export default function RequireAuth() {
+  const navigate = useNavigate();
+  const [ready, setReady] = useState(false);
+  const credsPresent = hasStoredCredentials();
+
+  useEffect(() => {
+    if (!credsPresent) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await fetchSession();
+        if (!cancelled) {
+          setReady(true);
+        }
+      } catch {
+        clearStoredCredentials();
+        if (!cancelled) {
+          navigate("/login", { replace: true });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [credsPresent, navigate]);
+
+  if (!credsPresent) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-300">
+        <div className="text-sm">Checking sign-in…</div>
+      </div>
+    );
+  }
+
+  return <Outlet />;
+}

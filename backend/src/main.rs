@@ -9,7 +9,9 @@ use axum::http::{HeaderValue, Method};
 use axum::routing::{get, post};
 use axum::Router;
 use inkly_search::IndexManager;
-use routes::{healthz, index_document, index_document_upload, index_documents_bulk, search};
+use routes::{
+    healthz, index_document, index_document_upload, index_documents_bulk, search, session,
+};
 use state::AppState;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
@@ -86,7 +88,8 @@ async fn main() {
             "/v1/documents/bulk",
             post(index_documents_bulk).layer(auth_layer.clone()),
         )
-        .route("/v1/search", get(search).layer(auth_layer))
+        .route("/v1/search", get(search).layer(auth_layer.clone()))
+        .route("/v1/session", get(session).layer(auth_layer))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(RequestBodyLimitLayer::new(config.max_body_bytes))

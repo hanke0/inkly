@@ -9,7 +9,9 @@ use crate::auth::AuthUser;
 use crate::error::ApiError;
 use crate::state::AppState;
 
-use inkly_contract::dto::{BulkIndexIn, DocumentIn, IndexResponse, SearchQuery, SearchResponse, SearchResult};
+use inkly_contract::dto::{
+    BulkIndexIn, DocumentIn, IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
+};
 use std::result::Result;
 
 use tracing::info;
@@ -21,6 +23,16 @@ struct HealthResponse {
 
 pub async fn healthz() -> impl IntoResponse {
     axum::Json(HealthResponse { status: "ok" })
+}
+
+/// Validates `Authorization: Basic` and returns 200 when credentials match the server config.
+pub async fn session(Extension(user): Extension<AuthUser>) -> Result<Json<SessionResponse>, ApiError> {
+    info!(
+        user_id = %user.user_id,
+        tenant_id = %user.tenant_id,
+        "session"
+    );
+    Ok(Json(SessionResponse { ok: true }))
 }
 
 const MAX_TITLE: usize = 200;

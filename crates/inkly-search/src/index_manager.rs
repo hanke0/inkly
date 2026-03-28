@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
-use tantivy::schema::{Field, IndexRecordOption, FAST, STORED, STRING, TEXT, Value};
+use tantivy::schema::{Field, IndexRecordOption, FAST, INDEXED, STORED, STRING, TEXT, Value};
 use tantivy::{doc, schema, Index, Term};
 
 use crate::error::{Result, SearchError};
@@ -100,6 +100,12 @@ impl IndexManager {
         let doc_id_field = schema
             .get_field("doc_id")
             .map_err(|_| SearchError::InvalidInput("missing doc_id field".into()))?;
+        if !schema.get_field_entry(doc_id_field).is_indexed() {
+            return Err(SearchError::InvalidInput(
+                "Tantivy index schema is outdated: doc_id must be indexed. Delete the index directory (your DATA_DIR) and restart."
+                    .into(),
+            ));
+        }
         let doc_url_field = schema
             .get_field("doc_url")
             .map_err(|_| SearchError::InvalidInput("missing doc_url field".into()))?;
@@ -144,7 +150,8 @@ impl IndexManager {
         let mut builder = schema::Schema::builder();
 
         let _tenant_id = builder.add_text_field("tenant_id", STRING | STORED);
-        let _doc_id = builder.add_u64_field("doc_id", FAST | STORED);
+        // INDEXED is required for `TermQuery` / `delete_query` on this field (FAST alone is not enough).
+        let _doc_id = builder.add_u64_field("doc_id", INDEXED | FAST | STORED);
         let _doc_url = builder.add_text_field("doc_url", STRING | STORED);
         let _title = builder.add_text_field("title", TEXT | STORED);
         let _content = builder.add_text_field("content", TEXT | STORED);
@@ -170,18 +177,19 @@ impl IndexManager {
     ) -> Result<IndexStats> {
         let now = Self::now_unix_seconds()?;
 
-        // Preserve existing `created_at` (first time this doc_id is ever indexed within a tenant).
-        let reader = self.index.reader()?;
-        let searcher = reader.searcher();
-        let created_at = self
-            .existing_created_at(&searcher, tenant_id, doc_id)?
-            .unwrap_or(now);
-        let updated_at = now;
-
         if tenant_id.trim().is_empty() {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
         // u64 doc_id is always "present".
+
+        // Drop the reader before opening a writer — Tantivy can fail or deadlock if both are held.
+        let created_at = {
+            let reader = self.index.reader()?;
+            let searcher = reader.searcher();
+            self.existing_created_at(&searcher, tenant_id, doc_id)?
+                .unwrap_or(now)
+        };
+        let updated_at = now;
 
         let mut writer = self.index.writer(50_000_000)?;
         let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
@@ -227,17 +235,27 @@ impl IndexManager {
     ) -> Result<IndexStats> {
         let now = Self::now_unix_seconds()?;
 
-        // Reuse one searcher for all docs in the batch.
-        let reader = self.index.reader()?;
-        let searcher = reader.searcher();
+        let docs: Vec<_> = docs.into_iter().collect();
+
+        let created_at_per_doc: Vec<i64> = {
+            let reader = self.index.reader()?;
+            let searcher = reader.searcher();
+            let mut v = Vec::with_capacity(docs.len());
+            for (doc_id, _, _, _, _, _, _) in &docs {
+                let created_at = self
+                    .existing_created_at(&searcher, tenant_id, *doc_id)?
+                    .unwrap_or(now);
+                v.push(created_at);
+            }
+            v
+        };
 
         let mut writer = self.index.writer(50_000_000)?;
         let mut indexed = 0u64;
 
-        for (doc_id, title, content, doc_url, tags, path, note) in docs {
-            let created_at = self
-                .existing_created_at(&searcher, tenant_id, doc_id)?
-                .unwrap_or(now);
+        for ((doc_id, title, content, doc_url, tags, path, note), created_at) in
+            docs.into_iter().zip(created_at_per_doc)
+        {
             let updated_at = now;
 
             let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);

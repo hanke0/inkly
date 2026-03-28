@@ -40,3 +40,7 @@ export type SearchResponse = {
   results: SearchResult[];
 };
 
+export type SessionResponse = {
+  ok: boolean;
+};
+
