@@ -8,6 +8,7 @@ pub struct DocumentIn {
     pub content: String,
     pub doc_url: String,
     pub tags: Vec<String>,
+    /// Parent directory path, normalized by the API to `/` or `/segment/.../` (trailing slash except root).
     pub path: String,
     pub note: String,
 }
@@ -54,6 +55,50 @@ pub struct SearchResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionResponse {
     pub ok: bool,
+}
+
+/// `GET /v1/catalog` — list indexed subdirectories and document titles under a logical path.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CatalogQuery {
+    /// Directory path (`/` or `/foo/bar/`). Normalized server-side.
+    #[serde(default = "default_catalog_path")]
+    pub path: String,
+}
+
+fn default_catalog_path() -> String {
+    "/".to_string()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CatalogSubdir {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CatalogFile {
+    pub doc_id: u64,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CatalogResponse {
+    pub path: String,
+    pub subdirs: Vec<CatalogSubdir>,
+    pub files: Vec<CatalogFile>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DocumentDetailResponse {
+    pub doc_id: u64,
+    pub title: String,
+    pub content: String,
+    pub doc_url: String,
+    pub path: String,
+    pub note: String,
+    pub tags: Vec<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 fn default_limit() -> u32 {

@@ -10,7 +10,8 @@ use axum::routing::{get, post};
 use axum::Router;
 use inkly_search::IndexManager;
 use routes::{
-    healthz, index_document, index_document_upload, index_documents_bulk, search, session,
+    catalog, get_document, healthz, index_document, index_document_upload, index_documents_bulk,
+    search, session,
 };
 use state::AppState;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
@@ -77,10 +78,6 @@ async fn main() {
     let app = Router::new()
         .route("/healthz", get(healthz))
         .route(
-            "/v1/documents",
-            post(index_document).layer(auth_layer.clone()),
-        )
-        .route(
             "/v1/documents/upload",
             post(index_document_upload).layer(auth_layer.clone()),
         )
@@ -88,6 +85,15 @@ async fn main() {
             "/v1/documents/bulk",
             post(index_documents_bulk).layer(auth_layer.clone()),
         )
+        .route(
+            "/v1/documents/{doc_id}",
+            get(get_document).layer(auth_layer.clone()),
+        )
+        .route(
+            "/v1/documents",
+            post(index_document).layer(auth_layer.clone()),
+        )
+        .route("/v1/catalog", get(catalog).layer(auth_layer.clone()))
         .route("/v1/search", get(search).layer(auth_layer.clone()))
         .route("/v1/session", get(session).layer(auth_layer))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))

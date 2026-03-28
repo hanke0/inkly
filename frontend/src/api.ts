@@ -1,5 +1,7 @@
 import type {
   BulkIndexIn,
+  CatalogResponse,
+  DocumentDetailResponse,
   DocumentIn,
   IndexResponse,
   SearchQuery,
@@ -106,6 +108,19 @@ export async function search(query: SearchQuery): Promise<SearchResponse> {
     limit: String(query.limit),
   });
   return apiFetch<SearchResponse>(`/v1/search?${params.toString()}`, {
+    method: "GET",
+  });
+}
+
+export async function fetchCatalog(path: string): Promise<CatalogResponse> {
+  const params = new URLSearchParams({ path: path || "/" });
+  return apiFetch<CatalogResponse>(`/v1/catalog?${params.toString()}`, {
+    method: "GET",
+  });
+}
+
+export async function fetchDocument(docId: number): Promise<DocumentDetailResponse> {
+  return apiFetch<DocumentDetailResponse>(`/v1/documents/${docId}`, {
     method: "GET",
   });
 }

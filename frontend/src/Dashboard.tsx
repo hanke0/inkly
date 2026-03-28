@@ -1,13 +1,29 @@
-import { useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { clearStoredCredentials, indexDocument, indexDocumentUpload, search } from "./api";
-import type { DocumentIn, IndexResponse, SearchQuery, SearchResponse } from "./types";
+import { clearStoredCredentials, fetchCatalog, indexDocument, indexDocumentUpload, search } from "./api";
+import type { CatalogResponse, DocumentIn, IndexResponse, SearchQuery, SearchResponse } from "./types";
 
 type Mode = "search" | "index";
 
+function pathBreadcrumbs(normalizedPath: string): { label: string; path: string }[] {
+  const out: { label: string; path: string }[] = [{ label: "Home", path: "/" }];
+  if (normalizedPath === "/") {
+    return out;
+  }
+  const inner = normalizedPath.replace(/^\/+|\/+$/g, "");
+  const parts = inner.split("/").filter(Boolean);
+  let prefix = "";
+  for (const p of parts) {
+    prefix = `${prefix}/${p}`;
+    out.push({ label: p, path: `${prefix}/` });
+  }
+  return out;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const pageOrigin = useMemo(
     () => (typeof window !== "undefined" ? window.location.origin : ""),
     [],
@@ -34,6 +50,29 @@ export default function Dashboard() {
 
   const [indexRes, setIndexRes] = useState<IndexResponse | null>(null);
   const [searchRes, setSearchRes] = useState<SearchResponse | null>(null);
+
+  const catalogUrlPath = searchParams.get("path")?.trim() || "/";
+  const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogErr, setCatalogErr] = useState("");
+
+  const loadCatalog = useCallback(async () => {
+    setCatalogErr("");
+    setCatalogLoading(true);
+    try {
+      const c = await fetchCatalog(catalogUrlPath);
+      setCatalog(c);
+    } catch (e) {
+      setCatalog(null);
+      setCatalogErr(e instanceof Error ? e.message : "Catalog request failed.");
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [catalogUrlPath]);
+
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
 
   function logout() {
     clearStoredCredentials();
@@ -84,6 +123,7 @@ export default function Dashboard() {
       }
       setIndexRes(res);
       setActionStatus("Indexed successfully.");
+      void loadCatalog();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Index request failed.");
       setActionStatus("");
@@ -159,6 +199,90 @@ export default function Dashboard() {
         {error ? (
           <div className="mt-4 rounded-xl border border-red-900 bg-red-950/30 p-3 text-sm text-red-200">
             {error}
+          </div>
+        ) : null}
+
+        {mode === "search" ? (
+          <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <div className="text-sm font-medium text-zinc-200">Search</div>
+            <form className="mt-3" onSubmit={onSearchSubmit}>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm text-zinc-300">q</label>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-zinc-300">limit</label>
+                  <input
+                    type="number"
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
+                    value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}
+                    min={1}
+                    max={50}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+                >
+                  {loading ? "Searching..." : "Search"}
+                </button>
+                <div className="text-xs text-zinc-400">Tenant scoping uses the Basic auth username.</div>
+              </div>
+            </form>
+
+            {searchRes ? (
+              <div className="mt-4 border-t border-zinc-800 pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-zinc-200 text-sm font-medium">Results</div>
+                  <div className="text-xs text-zinc-400">total_hits: {searchRes.total_hits}</div>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {searchRes.results.length === 0 ? (
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+                      No matches.
+                    </div>
+                  ) : null}
+                  {searchRes.results.map((r) => (
+                    <div
+                      key={r.doc_id}
+                      className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <Link
+                            to={`/doc/${r.doc_id}?path=${encodeURIComponent(r.path || "/")}`}
+                            className="truncate text-sm font-medium text-sky-400 hover:underline"
+                          >
+                            {r.title}
+                          </Link>
+                          <div className="mt-1 text-xs text-zinc-400 font-mono">{r.doc_id}</div>
+                          <div className="mt-1 text-xs text-zinc-500 font-mono truncate">
+                            {r.doc_url}
+                          </div>
+                        </div>
+                        <div className="text-xs text-zinc-400 font-mono">{r.score.toFixed(3)}</div>
+                      </div>
+                      <div className="mt-2 text-sm text-zinc-300 font-mono">{r.snippet}</div>
+                      <div className="mt-2 text-xs text-zinc-400">
+                        <div className="font-mono truncate">path: {r.path}</div>
+                        <div className="font-mono truncate">tags: {r.tags.join(", ")}</div>
+                        <div className="font-mono mt-1 text-zinc-500 truncate">{r.note}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -244,6 +368,10 @@ export default function Dashboard() {
                     value={path}
                     onChange={(e) => setPath(e.target.value)}
                   />
+                  <div className="mt-1 text-xs text-zinc-500">
+                    Directory path; the API normalizes to <span className="font-mono">/</span> or{" "}
+                    <span className="font-mono">/segment/.../</span>.
+                  </div>
                 </div>
               </div>
 
@@ -290,83 +418,96 @@ export default function Dashboard() {
               </div>
             ) : null}
           </div>
-        ) : (
-          <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-            <form onSubmit={onSearchSubmit}>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm text-zinc-300">q</label>
-                  <input
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-300">limit</label>
-                  <input
-                    type="number"
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-sm outline-none focus:border-zinc-700"
-                    value={limit}
-                    onChange={(e) => setLimit(Number(e.target.value))}
-                    min={1}
-                    max={50}
-                  />
-                </div>
-              </div>
+        ) : null}
 
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
-                >
-                  {loading ? "Searching..." : "Search"}
-                </button>
-                <div className="text-xs text-zinc-400">Tenant scoping uses the Basic auth username.</div>
-              </div>
-            </form>
-
-            {searchRes ? (
-              <div className="mt-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-zinc-200 text-sm font-medium">Results</div>
-                  <div className="text-xs text-zinc-400">total_hits: {searchRes.total_hits}</div>
-                </div>
-                <div className="mt-3 space-y-3">
-                  {searchRes.results.length === 0 ? (
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
-                      No matches.
-                    </div>
-                  ) : null}
-                  {searchRes.results.map((r) => (
-                    <div
-                      key={r.doc_id}
-                      className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-zinc-100">{r.title}</div>
-                          <div className="mt-1 text-xs text-zinc-400 font-mono">{r.doc_id}</div>
-                          <div className="mt-1 text-xs text-zinc-500 font-mono truncate">
-                            {r.doc_url}
-                          </div>
-                        </div>
-                        <div className="text-xs text-zinc-400 font-mono">{r.score.toFixed(3)}</div>
-                      </div>
-                      <div className="mt-2 text-sm text-zinc-300 font-mono">{r.snippet}</div>
-                      <div className="mt-2 text-xs text-zinc-400">
-                        <div className="font-mono truncate">path: {r.path}</div>
-                        <div className="font-mono truncate">tags: {r.tags.join(", ")}</div>
-                        <div className="font-mono mt-1 text-zinc-500 truncate">{r.note}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+        <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-medium text-zinc-200">Catalog</div>
+            {catalogLoading ? <div className="text-xs text-zinc-500">Loading…</div> : null}
           </div>
-        )}
+
+          {catalogErr ? (
+            <div className="mt-3 rounded-lg border border-red-900 bg-red-950/20 p-2 text-sm text-red-200">
+              {catalogErr}
+            </div>
+          ) : null}
+
+          {catalog ? (
+            <div className="mt-3">
+              <nav className="flex flex-wrap items-center gap-1 text-xs text-zinc-400">
+                {pathBreadcrumbs(catalog.path).map((crumb, i, arr) => (
+                  <span key={crumb.path} className="flex items-center gap-1">
+                    {i > 0 ? <span className="text-zinc-600">/</span> : null}
+                    <button
+                      type="button"
+                      className={
+                        i === arr.length - 1
+                          ? "font-medium text-zinc-200"
+                          : "text-sky-400 hover:underline"
+                      }
+                      onClick={() => {
+                        const next = new URLSearchParams(searchParams);
+                        next.set("path", crumb.path);
+                        setSearchParams(next);
+                      }}
+                    >
+                      {crumb.label}
+                    </button>
+                  </span>
+                ))}
+              </nav>
+
+              <div className="mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Subdirectories
+              </div>
+              <ul className="mt-2 space-y-1">
+                {catalog.subdirs.length === 0 ? (
+                  <li className="text-sm text-zinc-500">None</li>
+                ) : (
+                  catalog.subdirs.map((s) => (
+                    <li key={s.path}>
+                      <button
+                        type="button"
+                        className="text-left text-sm text-sky-400 hover:underline"
+                        onClick={() => {
+                          const next = new URLSearchParams(searchParams);
+                          next.set("path", s.path);
+                          setSearchParams(next);
+                        }}
+                      >
+                        {s.name}
+                      </button>
+                      <span className="ml-2 font-mono text-xs text-zinc-500">{s.path}</span>
+                    </li>
+                  ))
+                )}
+              </ul>
+
+              <div className="mt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Files in this folder
+              </div>
+              <ul className="mt-2 space-y-1">
+                {catalog.files.length === 0 ? (
+                  <li className="text-sm text-zinc-500">No documents with this path.</li>
+                ) : (
+                  catalog.files.map((f) => (
+                    <li key={f.doc_id}>
+                      <Link
+                        to={`/doc/${f.doc_id}?path=${encodeURIComponent(catalog.path)}`}
+                        className="text-sm text-sky-400 hover:underline"
+                      >
+                        {f.title}
+                      </Link>
+                      <span className="ml-2 font-mono text-xs text-zinc-500">{f.doc_id}</span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          ) : !catalogLoading && !catalogErr ? (
+            <div className="mt-3 text-sm text-zinc-500">No catalog data.</div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

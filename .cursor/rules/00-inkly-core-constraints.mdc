@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Inkly stack constraints
 - Backend must be implemented in Rust using `axum`.
-- Frontend must be implemented as a React web app (SPA) using Tailwind CSS utility classes.
+- Frontend must be implemented as a React web app using Tailwind CSS utility classes.
 - Search + storage must use Tantivy (indexing, querying, and persistence rules must follow the Tantivy rule).
 
 # How to structure changes

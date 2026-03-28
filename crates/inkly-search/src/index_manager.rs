@@ -1,8 +1,12 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
-use tantivy::schema::{Field, IndexRecordOption, FAST, INDEXED, STORED, STRING, TEXT, Value};
+use tantivy::schema::{
+    Field, IndexRecordOption, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
+    Value,
+};
 use tantivy::{doc, schema, Index, Term};
 
 use crate::error::{Result, SearchError};
@@ -25,6 +29,53 @@ pub struct SearchResultItem {
     pub tags: Vec<String>,
     pub path: String,
     pub note: String,
+}
+
+const MAX_CATALOG_SCAN: usize = 50_000;
+const MAX_CATALOG_FILES: usize = 5_000;
+
+/// One directory level in the catalog API (`name`, normalized `path`).
+#[derive(Clone, Debug)]
+pub struct CatalogListing {
+    pub path: String,
+    pub subdirs: Vec<(String, String)>,
+    pub files: Vec<(u64, String)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StoredDocument {
+    pub doc_id: u64,
+    pub title: String,
+    pub content: String,
+    pub doc_url: String,
+    pub path: String,
+    pub note: String,
+    pub tags: Vec<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
+    if indexed_path == parent {
+        return None;
+    }
+    if !indexed_path.starts_with(parent) {
+        return None;
+    }
+    let suffix = indexed_path[parent.len()..].trim_start_matches('/');
+    if suffix.is_empty() {
+        return None;
+    }
+    let first = suffix.split('/').next()?;
+    if first.is_empty() {
+        return None;
+    }
+    if parent == "/" {
+        Some(format!("/{first}/"))
+    } else {
+        let base = parent.trim_end_matches('/');
+        Some(format!("{base}/{first}/"))
+    }
 }
 
 #[derive(Clone)]
@@ -127,6 +178,12 @@ impl IndexManager {
         let path_field = schema
             .get_field("path")
             .map_err(|_| SearchError::InvalidInput("missing path field".into()))?;
+        if !schema.get_field_entry(path_field).is_indexed() {
+            return Err(SearchError::InvalidInput(
+                "Tantivy index schema is outdated: path must be indexed. Delete DATA_DIR and restart."
+                    .into(),
+            ));
+        }
         let note_field = schema
             .get_field("note")
             .map_err(|_| SearchError::InvalidInput("missing note field".into()))?;
@@ -158,7 +215,15 @@ impl IndexManager {
         let _created_timestamp = builder.add_i64_field("created_timestamp", STORED);
         let _update_timestamp = builder.add_i64_field("update_timestamp", STORED);
         let _tags = builder.add_text_field("tags", STRING | STORED);
-        let _path = builder.add_text_field("path", STRING | STORED);
+        // Whole-value indexing (`raw` tokenizer) for exact `path` `TermQuery` (STRING cannot be INDEXED in 0.25).
+        let path_opts = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("raw")
+                    .set_index_option(IndexRecordOption::Basic),
+            )
+            .set_stored();
+        let _path = builder.add_text_field("path", path_opts);
         let _note = builder.add_text_field("note", TEXT | STORED);
 
         builder.build()
@@ -359,5 +424,183 @@ impl IndexManager {
 
         Ok((total_hits, results))
     }
+
+    pub fn catalog_list(&self, tenant_id: &str, dir_path: &str) -> Result<CatalogListing> {
+        let reader = self.index.reader()?;
+        let searcher = reader.searcher();
+
+        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
+        let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
+
+        let hits = searcher.search(&tenant_query, &TopDocs::with_limit(MAX_CATALOG_SCAN))?;
+
+        let mut unique_paths: HashSet<String> = HashSet::new();
+        for (_, doc_address) in hits {
+            let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
+            let p = retrieved
+                .get_first(self.path_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !p.is_empty() {
+                unique_paths.insert(p.to_string());
+            }
+        }
+
+        let mut subdir_paths: HashSet<String> = HashSet::new();
+        for p in &unique_paths {
+            if let Some(child) = direct_subdir_under(dir_path, p) {
+                subdir_paths.insert(child);
+            }
+        }
+
+        let mut subdirs: Vec<(String, String)> = subdir_paths
+            .into_iter()
+            .map(|path| {
+                let name = path
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .find(|s| !s.is_empty())
+                    .unwrap_or("")
+                    .to_string();
+                (name, path)
+            })
+            .collect();
+        subdirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+
+        let path_term = Term::from_field_text(self.path_field, dir_path);
+        let path_query = TermQuery::new(path_term, IndexRecordOption::Basic);
+        let dir_query = BooleanQuery::new(vec![
+            (
+                Occur::Must,
+                Box::new(TermQuery::new(
+                    Term::from_field_text(self.tenant_id_field, tenant_id),
+                    IndexRecordOption::Basic,
+                )),
+            ),
+            (Occur::Must, Box::new(path_query)),
+        ]);
+
+        let file_hits = searcher.search(&dir_query, &TopDocs::with_limit(MAX_CATALOG_FILES))?;
+        let mut files: Vec<(u64, String)> = Vec::new();
+        for (_, doc_address) in file_hits {
+            let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
+            let doc_id = retrieved
+                .get_first(self.doc_id_field)
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let title = retrieved
+                .get_first(self.title_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if doc_id != 0 {
+                files.push((doc_id, title));
+            }
+        }
+        files.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+
+        Ok(CatalogListing {
+            path: dir_path.to_string(),
+            subdirs,
+            files,
+        })
+    }
+
+    pub fn get_document(&self, tenant_id: &str, doc_id: u64) -> Result<Option<StoredDocument>> {
+        let reader = self.index.reader()?;
+        let searcher = reader.searcher();
+        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
+        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
+        let query = BooleanQuery::new(vec![
+            (
+                Occur::Must,
+                Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic)),
+            ),
+            (
+                Occur::Must,
+                Box::new(TermQuery::new(doc_id_term, IndexRecordOption::Basic)),
+            ),
+        ]);
+
+        let hits = searcher.search(&query, &TopDocs::with_limit(1))?;
+        let (_, doc_address) = match hits.into_iter().next() {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+
+        let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
+        Ok(Some(StoredDocument {
+            doc_id: retrieved
+                .get_first(self.doc_id_field)
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            title: retrieved
+                .get_first(self.title_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            content: retrieved
+                .get_first(self.content_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            doc_url: retrieved
+                .get_first(self.doc_url_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            path: retrieved
+                .get_first(self.path_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            note: retrieved
+                .get_first(self.note_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            tags: retrieved
+                .get_all(self.tags_field)
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            created_at: retrieved
+                .get_first(self.created_timestamp_field)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+            updated_at: retrieved
+                .get_first(self.update_timestamp_field)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+        }))
+    }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::direct_subdir_under;
+
+    #[test]
+    fn direct_subdir_from_root() {
+        assert_eq!(direct_subdir_under("/", "/a/"), Some("/a/".to_string()));
+        assert_eq!(direct_subdir_under("/", "/a/b/"), Some("/a/".to_string()));
+    }
+
+    #[test]
+    fn direct_subdir_nested() {
+        assert_eq!(
+            direct_subdir_under("/a/", "/a/b/"),
+            Some("/a/b/".to_string())
+        );
+        assert_eq!(
+            direct_subdir_under("/a/", "/a/b/c/"),
+            Some("/a/b/".to_string())
+        );
+    }
+
+    #[test]
+    fn direct_subdir_same_or_unrelated() {
+        assert_eq!(direct_subdir_under("/a/", "/a/"), None);
+        assert_eq!(direct_subdir_under("/a/", "/b/"), None);
+        assert_eq!(direct_subdir_under("/a/", "/ab/"), None);
+    }
+}

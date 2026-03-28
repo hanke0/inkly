@@ -1,4 +1,4 @@
-use axum::extract::{Json, Multipart, Query, State};
+use axum::extract::{Json, Multipart, Path, Query, State};
 use axum::Extension;
 use axum::response::IntoResponse;
 // (no router helpers here; handlers are wired in `main.rs`)
@@ -10,7 +10,8 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 use inkly_contract::dto::{
-    BulkIndexIn, DocumentIn, IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
+    BulkIndexIn, CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentDetailResponse,
+    DocumentIn, IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
 };
 use std::result::Result;
 
@@ -42,6 +43,30 @@ const MAX_PATH: usize = 1024;
 const MAX_NOTE: usize = 20_000;
 const MAX_TAGS: usize = 50;
 const MAX_TAG_LEN: usize = 64;
+
+/// Normalizes a logical directory path: `/` or `/segment/.../` (trailing slash except root).
+fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Ok("/".to_string());
+    }
+    if !s.starts_with('/') {
+        return Err(ApiError::bad_request("invalid path"));
+    }
+    let parts: Vec<&str> = s
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
+    for p in &parts {
+        if *p == ".." {
+            return Err(ApiError::bad_request("invalid path"));
+        }
+    }
+    if parts.is_empty() {
+        return Ok("/".to_string());
+    }
+    Ok(format!("/{}/", parts.join("/")))
+}
 
 fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
     if input.doc_id == 0 {
@@ -76,8 +101,9 @@ fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
 pub async fn index_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
-    Json(input): Json<DocumentIn>,
+    Json(mut input): Json<DocumentIn>,
 ) -> Result<Json<IndexResponse>, ApiError> {
+    input.path = normalize_dir_path(&input.path)?;
     validate_document(&input)?;
 
     let tenant_id = user.tenant_id;
@@ -213,7 +239,7 @@ pub async fn index_document_upload(
         .filter(|t| !t.is_empty())
         .collect();
 
-    let input = DocumentIn {
+    let mut input = DocumentIn {
         doc_id,
         title: title.trim().to_string(),
         content,
@@ -223,6 +249,7 @@ pub async fn index_document_upload(
         note,
     };
 
+    input.path = normalize_dir_path(&input.path)?;
     validate_document(&input)?;
 
     let tenant_id = user.tenant_id;
@@ -266,13 +293,14 @@ pub async fn index_document_upload(
 pub async fn index_documents_bulk(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
-    Json(input): Json<BulkIndexIn>,
+    Json(mut input): Json<BulkIndexIn>,
 ) -> Result<Json<IndexResponse>, ApiError> {
     const MAX_BATCH: usize = 200;
     if input.documents.is_empty() || input.documents.len() > MAX_BATCH {
         return Err(ApiError::bad_request("invalid documents batch size"));
     }
-    for doc in &input.documents {
+    for doc in &mut input.documents {
+        doc.path = normalize_dir_path(&doc.path)?;
         validate_document(doc)?;
     }
 
@@ -352,6 +380,79 @@ pub async fn search(
     Ok(Json(SearchResponse {
         total_hits,
         results,
+    }))
+}
+
+pub async fn catalog(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
+    Query(query): Query<CatalogQuery>,
+) -> Result<Json<CatalogResponse>, ApiError> {
+    let dir_path = normalize_dir_path(&query.path)?;
+    let tenant_id = user.tenant_id;
+    let index = state.index.clone();
+
+    info!(
+        tenant_id = %tenant_id,
+        user_id = %user.user_id,
+        path = %dir_path,
+        "catalog"
+    );
+
+    let listing = tokio::task::spawn_blocking(move || index.catalog_list(&tenant_id, &dir_path))
+        .await
+        .map_err(|_| ApiError::Internal)??;
+
+    Ok(Json(CatalogResponse {
+        path: listing.path,
+        subdirs: listing
+            .subdirs
+            .into_iter()
+            .map(|(name, path)| CatalogSubdir { name, path })
+            .collect(),
+        files: listing
+            .files
+            .into_iter()
+            .map(|(doc_id, title)| CatalogFile { doc_id, title })
+            .collect(),
+    }))
+}
+
+pub async fn get_document(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
+    Path(doc_id): Path<u64>,
+) -> Result<Json<DocumentDetailResponse>, ApiError> {
+    if doc_id == 0 {
+        return Err(ApiError::bad_request("invalid doc_id"));
+    }
+
+    let tenant_id = user.tenant_id;
+    let index = state.index.clone();
+
+    info!(
+        tenant_id = %tenant_id,
+        user_id = %user.user_id,
+        doc_id = doc_id,
+        "get_document"
+    );
+
+    let doc = tokio::task::spawn_blocking(move || index.get_document(&tenant_id, doc_id))
+        .await
+        .map_err(|_| ApiError::Internal)??;
+
+    let d = doc.ok_or(ApiError::NotFound)?;
+
+    Ok(Json(DocumentDetailResponse {
+        doc_id: d.doc_id,
+        title: d.title,
+        content: d.content,
+        doc_url: d.doc_url,
+        path: d.path,
+        note: d.note,
+        tags: d.tags,
+        created_at: d.created_at,
+        updated_at: d.updated_at,
     }))
 }
 

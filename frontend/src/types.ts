@@ -44,3 +44,31 @@ export type SessionResponse = {
   ok: boolean;
 };
 
+export type CatalogSubdir = {
+  name: string;
+  path: string;
+};
+
+export type CatalogFile = {
+  doc_id: number;
+  title: string;
+};
+
+export type CatalogResponse = {
+  path: string;
+  subdirs: CatalogSubdir[];
+  files: CatalogFile[];
+};
+
+export type DocumentDetailResponse = {
+  doc_id: number;
+  title: string;
+  content: string;
+  doc_url: string;
+  path: string;
+  note: string;
+  tags: string[];
+  created_at: number;
+  updated_at: number;
+};
+
