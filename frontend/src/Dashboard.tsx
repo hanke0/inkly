@@ -28,10 +28,14 @@ export default function Dashboard() {
   const catalogUrlPath = searchParams.get("path")?.trim() || "/";
   const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(catalogUrlPath);
 
-  const newDocForm = useNewDocumentForm(() => {
+  const newDocForm = useNewDocumentForm((res) => {
     void reloadCatalog();
     setIndexModalOpen(false);
-    setActionStatus("Indexed successfully.");
+    setActionStatus(
+      typeof res.doc_id === "number"
+        ? `Indexed successfully (doc #${res.doc_id}).`
+        : "Indexed successfully.",
+    );
   });
 
   function logout() {

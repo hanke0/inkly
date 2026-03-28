@@ -6,7 +6,6 @@ import type { DocumentIn, IndexResponse } from "../types";
 export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
-  const [docId, setDocId] = useState(1);
   const [title, setTitle] = useState("Hello");
   const [content, setContent] = useState("This is a test document.");
   const [contentFile, setContentFile] = useState<File | null>(null);
@@ -49,7 +48,6 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
       if (contentFile) {
         const fd = new FormData();
         fd.append("file", contentFile);
-        fd.append("doc_id", String(docId));
         fd.append("title", title.trim());
         fd.append("doc_url", docUrl.trim());
         fd.append("path", path.trim());
@@ -63,7 +61,6 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
           return;
         }
         const payload: DocumentIn = {
-          doc_id: docId,
           title: title.trim(),
           content,
           doc_url: docUrl.trim(),
@@ -82,8 +79,6 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
   }
 
   return {
-    docId,
-    setDocId,
     title,
     setTitle,
     content,

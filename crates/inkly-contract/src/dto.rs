@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentIn {
-    /// Document id.
-    pub doc_id: u64,
+    /// Set explicitly to update/replace that id. Omit, `null`, or `0` for a server-assigned id.
+    #[serde(default)]
+    pub doc_id: Option<u64>,
     pub title: String,
     pub content: String,
     pub doc_url: String,
@@ -22,6 +23,12 @@ pub struct BulkIndexIn {
 pub struct IndexResponse {
     pub indexed: u64,
     pub deleted: u64,
+    /// Single-document index: assigned id when `doc_id` was omitted / null / 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc_id: Option<u64>,
+    /// Bulk index: final document id for each item, in request order (includes explicit ids).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub doc_ids: Vec<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -15,6 +15,7 @@ use inkly_contract::dto::{
 };
 use std::result::Result;
 
+use inkly_search::SearchError;
 use tracing::info;
 
 #[derive(Serialize)]
@@ -68,10 +69,11 @@ fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
     Ok(format!("/{}/", parts.join("/")))
 }
 
+fn use_automatic_doc_id(doc_id: Option<u64>) -> bool {
+    matches!(doc_id, None | Some(0))
+}
+
 fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
-    if input.doc_id == 0 {
-        return Err(ApiError::bad_request("invalid doc_id"));
-    }
     if input.title.len() > MAX_TITLE {
         return Err(ApiError::bad_request("invalid title"));
     }
@@ -107,7 +109,8 @@ pub async fn index_document(
     validate_document(&input)?;
 
     let tenant_id = user.tenant_id;
-    let doc_id = input.doc_id;
+    let want_auto_id = use_automatic_doc_id(input.doc_id);
+    let requested_doc_id = input.doc_id;
     let title = input.title;
     let content = input.content;
     let doc_url = input.doc_url;
@@ -119,12 +122,19 @@ pub async fn index_document(
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
-        doc_id = %doc_id,
+        ?requested_doc_id,
+        want_auto_id,
         "index_document"
     );
 
-    let stats = tokio::task::spawn_blocking(move || {
-        index.index_document(
+    let (stats, assigned_doc_id) = tokio::task::spawn_blocking(move || {
+        let doc_id = if want_auto_id {
+            index.allocate_doc_id()?
+        } else {
+            requested_doc_id.unwrap_or(0)
+        };
+        let assigned = want_auto_id.then_some(doc_id);
+        let stats = index.index_document(
             &tenant_id,
             doc_id,
             &title,
@@ -133,7 +143,8 @@ pub async fn index_document(
             &tags,
             &path,
             &note,
-        )
+        )?;
+        Ok::<_, SearchError>((stats, assigned))
     })
     .await
     .map_err(|_| ApiError::Internal)??;
@@ -141,12 +152,14 @@ pub async fn index_document(
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
         deleted: stats.deleted,
+        doc_id: assigned_doc_id,
+        doc_ids: Vec::new(),
     }))
 }
 
 /// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`).
 ///
-/// Other fields match `DocumentIn` as text parts: `doc_id`, `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
+/// Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned), `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
 pub async fn index_document_upload(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
@@ -226,12 +239,15 @@ pub async fn index_document_upload(
     let bytes = file_bytes.ok_or_else(|| ApiError::bad_request("missing file"))?;
     let content = String::from_utf8(bytes).map_err(|_| ApiError::bad_request("file must be utf-8"))?;
 
-    let doc_id = doc_id_raw
-        .as_deref()
-        .ok_or_else(|| ApiError::bad_request("missing doc_id"))?
-        .trim()
-        .parse::<u64>()
-        .map_err(|_| ApiError::bad_request("invalid doc_id"))?;
+    let doc_id = match doc_id_raw.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(s) => {
+            let n = s
+                .parse::<u64>()
+                .map_err(|_| ApiError::bad_request("invalid doc_id"))?;
+            Some(n)
+        }
+    };
 
     let tags: Vec<String> = tags_raw
         .split(',')
@@ -253,7 +269,8 @@ pub async fn index_document_upload(
     validate_document(&input)?;
 
     let tenant_id = user.tenant_id;
-    let doc_id = input.doc_id;
+    let want_auto_id = use_automatic_doc_id(input.doc_id);
+    let requested_doc_id = input.doc_id;
     let title = input.title;
     let content = input.content;
     let doc_url = input.doc_url;
@@ -265,12 +282,19 @@ pub async fn index_document_upload(
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
-        doc_id = %doc_id,
+        ?requested_doc_id,
+        want_auto_id,
         "index_document_upload"
     );
 
-    let stats = tokio::task::spawn_blocking(move || {
-        index.index_document(
+    let (stats, assigned_doc_id) = tokio::task::spawn_blocking(move || {
+        let doc_id = if want_auto_id {
+            index.allocate_doc_id()?
+        } else {
+            requested_doc_id.unwrap_or(0)
+        };
+        let assigned = want_auto_id.then_some(doc_id);
+        let stats = index.index_document(
             &tenant_id,
             doc_id,
             &title,
@@ -279,7 +303,8 @@ pub async fn index_document_upload(
             &tags,
             &path,
             &note,
-        )
+        )?;
+        Ok::<_, SearchError>((stats, assigned))
     })
     .await
     .map_err(|_| ApiError::Internal)??;
@@ -287,6 +312,8 @@ pub async fn index_document_upload(
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
         deleted: stats.deleted,
+        doc_id: assigned_doc_id,
+        doc_ids: Vec::new(),
     }))
 }
 
@@ -305,37 +332,48 @@ pub async fn index_documents_bulk(
     }
 
     let tenant_id = user.tenant_id;
-    let docs: Vec<(u64, String, String, String, Vec<String>, String, String)> = input
-        .documents
-        .into_iter()
-        .map(|d| {
-            (
-                d.doc_id,
+    let documents = input.documents;
+    let index = state.index.clone();
+
+    info!(
+        tenant_id = %tenant_id,
+        user_id = %user.user_id,
+        indexed_documents = documents.len(),
+        "index_documents_bulk"
+    );
+
+    let (stats, doc_ids) = tokio::task::spawn_blocking(move || {
+        let mut rows: Vec<(u64, String, String, String, Vec<String>, String, String)> =
+            Vec::with_capacity(documents.len());
+        let mut ids = Vec::with_capacity(documents.len());
+        for d in documents {
+            let doc_id = if use_automatic_doc_id(d.doc_id) {
+                index.allocate_doc_id()?
+            } else {
+                d.doc_id.unwrap_or(0)
+            };
+            ids.push(doc_id);
+            rows.push((
+                doc_id,
                 d.title,
                 d.content,
                 d.doc_url,
                 d.tags,
                 d.path,
                 d.note,
-            )
-        })
-        .collect();
-    let index = state.index.clone();
-
-    info!(
-        tenant_id = %tenant_id,
-        user_id = %user.user_id,
-        indexed_documents = docs.len(),
-        "index_documents_bulk"
-    );
-
-    let stats = tokio::task::spawn_blocking(move || index.index_documents(&tenant_id, docs))
-        .await
-        .map_err(|_| ApiError::Internal)??;
+            ));
+        }
+        let stats = index.index_documents(&tenant_id, rows)?;
+        Ok::<_, SearchError>((stats, ids))
+    })
+    .await
+    .map_err(|_| ApiError::Internal)??;
 
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
         deleted: stats.deleted,
+        doc_id: None,
+        doc_ids,
     }))
 }
 

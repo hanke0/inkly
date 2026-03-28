@@ -30,9 +30,26 @@ impl ApiError {
 
 impl From<SearchError> for ApiError {
     fn from(value: SearchError) -> Self {
-        tracing::error!(error = %value, "search/index operation failed");
-        // Do not leak internal indexing/search details to clients.
-        ApiError::Internal
+        match value {
+            SearchError::InvalidInput(msg) => {
+                tracing::warn!(%msg, "invalid search/index input");
+                ApiError::BadRequest(msg)
+            }
+            SearchError::StorageVersionMismatch { expected, found } => {
+                tracing::error!(expected, found, "storage data_version mismatch");
+                ApiError::BadRequest(format!(
+                    "storage data_version mismatch: expected {expected}, found {found}"
+                ))
+            }
+            SearchError::LockPoisoned => {
+                tracing::error!("index layer mutex poisoned");
+                ApiError::Internal
+            }
+            other => {
+                tracing::error!(error = %other, "search/index operation failed");
+                ApiError::Internal
+            }
+        }
     }
 }
 

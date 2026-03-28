@@ -82,8 +82,6 @@ export default function LoginPage() {
           <p className="mt-2 text-sm leading-relaxed text-inkly-muted">
             Your personal web archive, self-hosted
           </p>
-          <h2 className="mt-8 text-xl font-semibold text-inkly-ink-soft">Sign in</h2>
-          <p className="mt-2 text-sm text-inkly-muted">Use the same username and password as the server.</p>
         </div>
 
         <form

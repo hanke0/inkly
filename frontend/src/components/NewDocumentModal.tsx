@@ -11,7 +11,10 @@ type NewDocumentModalProps = {
 
 export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps) {
   const titleId = useId();
-  const closeRef = useRef<HTMLButtonElement>(null);
+  // Parent often passes an inline `onClose`; including it in `useEffect` deps would re-run the
+  // effect on every parent re-render (e.g. each keystroke in the form) and steal focus.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) {
@@ -19,18 +22,17 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
       }
     }
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    queueMicrotask(() => closeRef.current?.focus());
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -54,7 +56,6 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
             New document
           </h2>
           <button
-            ref={closeRef}
             type="button"
             className="shrink-0 rounded-md px-2.5 py-1.5 text-sm text-inkly-muted transition-colors hover:bg-inkly-border-soft hover:text-inkly-ink"
             onClick={onClose}

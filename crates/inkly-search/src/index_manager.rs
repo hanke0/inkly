@@ -1,5 +1,6 @@
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
@@ -10,6 +11,7 @@ use tantivy::schema::{
 use tantivy::{doc, schema, Index, Term};
 
 use crate::error::{Result, SearchError};
+use crate::storage_meta;
 
 #[derive(Clone, Debug)]
 pub struct IndexStats {
@@ -78,9 +80,17 @@ fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
     }
 }
 
+struct AutoIncrementState {
+    version_path: PathBuf,
+    data_version: u32,
+    /// Next `doc_id` to assign.
+    next: u64,
+}
+
 #[derive(Clone)]
 pub struct IndexManager {
     index: Index,
+    auto_increment: Arc<Mutex<AutoIncrementState>>,
     tenant_id_field: Field,
     doc_id_field: Field,
     doc_url_field: Field,
@@ -132,16 +142,18 @@ impl IndexManager {
         Ok(Some(created_at))
     }
 
-    pub fn open_or_create<P: AsRef<Path>>(index_dir: P) -> Result<Self> {
-        let index_dir = index_dir.as_ref();
-        std::fs::create_dir_all(index_dir)?;
+    /// Opens or creates the Tantivy index under `data_root/index/` and loads `data_root/version.data`.
+    pub fn open_or_create<P: AsRef<Path>>(data_root: P) -> Result<Self> {
+        let data_root = data_root.as_ref();
+        let version_state = storage_meta::load_or_init_version_state(data_root)?;
+        let index_dir = storage_meta::index_dir(data_root);
+        let version_path = storage_meta::version_file_path(data_root);
 
-        let index = if let Ok(existing) = Index::open_in_dir(index_dir) {
+        let index = if let Ok(existing) = Index::open_in_dir(&index_dir) {
             existing
         } else {
             let schema = Self::build_schema();
-            let index = Index::create_in_dir(index_dir, schema)?;
-            index
+            Index::create_in_dir(&index_dir, schema)?
         };
 
         let schema = index.schema();
@@ -153,7 +165,7 @@ impl IndexManager {
             .map_err(|_| SearchError::InvalidInput("missing doc_id field".into()))?;
         if !schema.get_field_entry(doc_id_field).is_indexed() {
             return Err(SearchError::InvalidInput(
-                "Tantivy index schema is outdated: doc_id must be indexed. Delete the index directory (your DATA_DIR) and restart."
+                "Tantivy index schema is outdated: doc_id must be indexed. Delete the index directory (DATA_DIR/index) and restart."
                     .into(),
             ));
         }
@@ -180,7 +192,7 @@ impl IndexManager {
             .map_err(|_| SearchError::InvalidInput("missing path field".into()))?;
         if !schema.get_field_entry(path_field).is_indexed() {
             return Err(SearchError::InvalidInput(
-                "Tantivy index schema is outdated: path must be indexed. Delete DATA_DIR and restart."
+                "Tantivy index schema is outdated: path must be indexed. Delete DATA_DIR/index and restart."
                     .into(),
             ));
         }
@@ -190,6 +202,11 @@ impl IndexManager {
 
         Ok(Self {
             index,
+            auto_increment: Arc::new(Mutex::new(AutoIncrementState {
+                version_path,
+                data_version: version_state.data_version,
+                next: version_state.auto_increment,
+            })),
             tenant_id_field,
             doc_id_field,
             doc_url_field,
@@ -201,6 +218,25 @@ impl IndexManager {
             path_field,
             note_field,
         })
+    }
+
+    /// Returns the next server-assigned `doc_id` and persists it to `version.data`.
+    pub fn allocate_doc_id(&self) -> Result<u64> {
+        let mut guard = self
+            .auto_increment
+            .lock()
+            .map_err(|_| SearchError::LockPoisoned)?;
+        let id = guard.next;
+        guard.next = guard
+            .next
+            .checked_add(1)
+            .ok_or_else(|| SearchError::InvalidInput("auto_increment overflow".into()))?;
+        storage_meta::persist_auto_increment(
+            &guard.version_path,
+            guard.data_version,
+            guard.next,
+        )?;
+        Ok(id)
     }
 
     fn build_schema() -> schema::Schema {

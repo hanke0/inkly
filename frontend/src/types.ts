@@ -1,5 +1,6 @@
 export type DocumentIn = {
-  doc_id: number;
+  /** Omit for server-assigned id. */
+  doc_id?: number;
   title: string;
   content: string;
   doc_url: string;
@@ -15,6 +16,10 @@ export type BulkIndexIn = {
 export type IndexResponse = {
   indexed: number;
   deleted: number;
+  /** Single-document index: assigned id when `doc_id` was omitted. */
+  doc_id?: number;
+  /** Bulk index: final ids in request order. */
+  doc_ids?: number[];
 };
 
 export type SearchQuery = {

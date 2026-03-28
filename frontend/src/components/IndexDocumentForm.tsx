@@ -6,8 +6,6 @@ type IndexDocumentFormProps = {
 
 export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
   const {
-    docId,
-    setDocId,
     title,
     setTitle,
     content,
@@ -35,24 +33,14 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{formError}</div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-inkly-muted">doc_id</label>
-          <input
-            type="number"
-            className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
-            value={docId}
-            onChange={(e) => setDocId(Number(e.target.value))}
-          />
-        </div>
-        <div>
-          <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-inkly-muted">title</label>
-          <input
-            className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
+      <div>
+        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-inkly-muted">title</label>
+        <input
+          autoFocus
+          className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </div>
 
       <div>
