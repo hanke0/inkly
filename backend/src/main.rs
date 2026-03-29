@@ -65,22 +65,32 @@ async fn main() {
         }
     };
 
-    let hf_hub_cache = config.data_dir.join("huggingface").join("hub");
-    if let Err(e) = std::fs::create_dir_all(&hf_hub_cache) {
-        eprintln!("startup error: failed to create Hugging Face cache dir {}: {e}", hf_hub_cache.display());
-        return;
-    }
-
-    let summarizer_cfg = SummarizerConfig {
-        hf_hub_cache_dir: Some(hf_hub_cache),
-        ..SummarizerConfig::default()
-    };
-    let summarizer = match Summarizer::load(summarizer_cfg) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("startup error: failed to initialize summarizer: {e}");
+    let summarizer = if config.summarize_enabled {
+        let hf_hub_cache = config.data_dir.join("huggingface").join("hub");
+        if let Err(e) = std::fs::create_dir_all(&hf_hub_cache) {
+            eprintln!(
+                "startup error: failed to create Hugging Face cache dir {}: {e}",
+                hf_hub_cache.display()
+            );
             return;
         }
+        let summarizer_cfg = SummarizerConfig {
+            hf_hub_cache_dir: Some(hf_hub_cache),
+            ..SummarizerConfig::default()
+        };
+        match Summarizer::load(summarizer_cfg) {
+            Ok(s) => {
+                info!("summarization enabled (SUMMARIZE_ENABLED)");
+                Some(s)
+            }
+            Err(e) => {
+                eprintln!("startup error: failed to initialize summarizer: {e}");
+                return;
+            }
+        }
+    } else {
+        info!("summarization disabled; set SUMMARIZE_ENABLED=true to enable");
+        None
     };
 
     let cors_layer = match build_cors_layer(&config) {

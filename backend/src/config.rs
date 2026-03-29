@@ -10,6 +10,8 @@ pub struct Config {
     /// When true, allow any origin (set `CORS_ORIGINS=*`). Otherwise use `cors_origins`.
     pub cors_permissive: bool,
     pub cors_origins: Vec<String>,
+    /// When true, load the local LLM and populate the `summary` field on index routes. Default off.
+    pub summarize_enabled: bool,
 }
 
 impl Config {
@@ -30,6 +32,16 @@ impl Config {
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(1024 * 1024); // 1MiB
+
+        let summarize_enabled = std::env::var("SUMMARIZE_ENABLED")
+            .ok()
+            .map(|v| {
+                matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
 
         let (cors_permissive, cors_origins) = match std::env::var("CORS_ORIGINS") {
             Ok(raw) if raw.trim() == "*" => (true, Vec::new()),
@@ -64,6 +76,7 @@ impl Config {
             max_body_bytes,
             cors_permissive,
             cors_origins,
+            summarize_enabled,
         })
     }
 }

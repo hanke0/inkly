@@ -4,7 +4,7 @@ use axum::Extension;
 use axum::response::IntoResponse;
 // (no router helpers here; handlers are wired in `main.rs`)
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -17,8 +17,9 @@ use inkly_contract::dto::{
 use std::result::Result;
 
 use inkly_search::SearchError;
-use tracing::warn;
+use inkly_summarize::Summarizer;
 use tracing::info;
+use tracing::warn;
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -112,6 +113,27 @@ fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// When summarization is off or the lock fails, returns an empty string (indexing still succeeds).
+fn summarize_if_enabled(
+    summarizer: &Option<Arc<Mutex<Summarizer>>>,
+    content: &str,
+    op: &'static str,
+) -> String {
+    let Some(sm) = summarizer else {
+        return String::new();
+    };
+    let mut summary = String::new();
+    match sm.lock() {
+        Ok(mut guard) => {
+            if let Err(e) = guard.summarize(content).map(|s| summary = s) {
+                warn!(error = %e, op = op, "summarizer failed");
+            }
+        }
+        Err(_) => warn!(op = op, "summarizer lock poisoned"),
+    }
+    summary
+}
+
 pub async fn index_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
@@ -148,20 +170,7 @@ pub async fn index_document(
         };
         let assigned = want_auto_id.then_some(doc_id);
 
-        // Best-effort summary generation; failures do not abort indexing.
-        let mut summary = String::new();
-        match summarizer.lock() {
-            Ok(mut guard) => {
-                if let Err(e) = guard.summarize(&content).map(|s| {
-                    summary = s;
-                }) {
-                    warn!(error = %e, "summarizer failed for single document");
-                }
-            }
-            Err(_) => {
-                warn!("summarizer lock poisoned");
-            }
-        }
+        let summary = summarize_if_enabled(&summarizer, &content, "index_document");
 
         let stats = index.index_document(
             &tenant_id,
@@ -323,19 +332,7 @@ pub async fn index_document_upload(
         };
         let assigned = want_auto_id.then_some(doc_id);
 
-        let mut summary = String::new();
-        match summarizer.lock() {
-            Ok(mut guard) => {
-                if let Err(e) = guard.summarize(&content).map(|s| {
-                    summary = s;
-                }) {
-                    warn!(error = %e, "summarizer failed for upload document");
-                }
-            }
-            Err(_) => {
-                warn!("summarizer lock poisoned (upload)");
-            }
-        }
+        let summary = summarize_if_enabled(&summarizer, &content, "index_document_upload");
 
         let stats = index.index_document(
             &tenant_id,
@@ -398,19 +395,7 @@ pub async fn index_documents_bulk(
                 d.doc_id.unwrap_or(0)
             };
             ids.push(doc_id);
-            let mut summary = String::new();
-            match summarizer.lock() {
-                Ok(mut guard) => {
-                    if let Err(e) = guard.summarize(&d.content).map(|s| {
-                        summary = s;
-                    }) {
-                        warn!(error = %e, "summarizer failed for bulk document");
-                    }
-                }
-                Err(_) => {
-                    warn!("summarizer lock poisoned (bulk)");
-                }
-            }
+            let summary = summarize_if_enabled(&summarizer, &d.content, "index_documents_bulk");
             rows.push((
                 doc_id,
                 d.title,

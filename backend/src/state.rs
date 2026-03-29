@@ -6,7 +6,7 @@ use inkly_summarize::Summarizer;
 #[derive(Clone)]
 pub struct AppState {
     pub index: IndexManager,
-    pub summarizer: Arc<Mutex<Summarizer>>,
+    pub summarizer: Option<Arc<Mutex<Summarizer>>>,
     expected_username: String,
     expected_password: String,
 }
@@ -14,13 +14,13 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         index: IndexManager,
-        summarizer: Summarizer,
+        summarizer: Option<Summarizer>,
         expected_username: String,
         expected_password: String,
     ) -> Arc<Self> {
         Arc::new(Self {
             index,
-            summarizer: Arc::new(Mutex::new(summarizer)),
+            summarizer: summarizer.map(|s| Arc::new(Mutex::new(s))),
             expected_username,
             expected_password,
         })
