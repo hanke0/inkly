@@ -78,10 +78,10 @@ export default function LoginPage() {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-inkly-shell text-inkly-ink">
       <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col justify-center px-4 py-8">
         <div className="mb-8 text-center">
-          <h1 className="m-0 font-serif text-3xl font-medium tracking-tight">
+          <h1 className="m-0 text-4xl font-medium tracking-tight">
             <Link
               to="/"
-              className="text-inkly-ink transition-colors hover:text-inkly-accent focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inkly-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-inkly-shell"
+              className="font-inkly-logo text-inkly-ink transition-colors hover:text-inkly-accent focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inkly-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-inkly-shell"
             >
               Inkly
             </Link>

@@ -158,6 +158,21 @@ function extractDoctypeDeclaration(raw: string): string {
   return m ? m[1] : "<!DOCTYPE html>";
 }
 
+/** Default serif for sandboxed HTML reading pane; author CSS in the doc can override. */
+const IFRAME_BODY_SERIF_STYLE =
+  "body{font-family:Georgia,ui-serif,Cambria,'Times New Roman',Times,'Liberation Serif','Songti SC','STSong',serif;font-variant-numeric:lining-nums;}";
+
+function ensureIframeReadingBodyFont(doc: Document) {
+  const head = doc.head;
+  if (!head) {
+    return;
+  }
+  const style = doc.createElement("style");
+  style.setAttribute("data-inkly", "reading-font");
+  style.textContent = IFRAME_BODY_SERIF_STYLE;
+  head.insertBefore(style, head.firstChild);
+}
+
 function escapeForHtmlText(raw: string): string {
   return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -185,6 +200,7 @@ export function buildIframeSrcdocNoJs(raw: string): string {
 
   removeScriptsFromDocument(doc);
   stripEventHandlersAndDangerousUrls(doc);
+  ensureIframeReadingBodyFont(doc);
 
   const root = doc.documentElement;
   if (!root) {

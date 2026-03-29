@@ -1,40 +1,43 @@
+/** System UI stack (chrome, labels, titles); no webfonts. */
+const fontSystem = [
+  "system-ui",
+  "-apple-system",
+  "BlinkMacSystemFont",
+  '"Segoe UI"',
+  "Roboto",
+  '"Helvetica Neue"',
+  "Arial",
+  "sans-serif",
+];
+
+/**
+ * Right-pane reading: Georgia first so Latin digits stay lining and consistent;
+ * ui-serif after (e.g. New York) can use old-style figures that look odd in prose.
+ */
+const fontReadSerif = [
+  "Georgia",
+  "ui-serif",
+  "Cambria",
+  '"Times New Roman"',
+  "Times",
+  '"Liberation Serif"',
+  '"Songti SC"',
+  '"STSong"',
+  "serif",
+];
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       fontFamily: {
-        /* Transitional serif + OS CJK fallbacks (no webfont download). */
-        "inkly-read": [
-          "Charter",
-          "Bitstream Charter",
-          "Iowan Old Style",
-          "Palatino Linotype",
-          "Book Antiqua",
-          "Palatino",
-          "Cambria",
-          "Sitka Text",
-          "Georgia",
-          "Hiragino Sans GB",
-          "PingFang SC",
-          "Microsoft YaHei",
-          '"Source Han Sans SC"',
-          '"Noto Sans SC"',
-          '"Noto Sans CJK SC"',
-          "serif",
-        ],
-        /* Title / chrome contrast against serif body */
-        "inkly-read-ui": [
-          "system-ui",
-          "-apple-system",
-          "BlinkMacSystemFont",
-          '"Segoe UI"',
-          '"PingFang SC"',
-          '"Hiragino Sans GB"',
-          '"Source Han Sans SC"',
-          '"Noto Sans SC"',
-          "sans-serif",
-        ],
+        sans: fontSystem,
+        /** Wordmark only */
+        "inkly-logo": ["Georgia", "serif"],
+        "inkly-read": fontReadSerif,
+        /** Same as sans — headings / UI next to serif body */
+        "inkly-read-ui": fontSystem,
       },
       colors: {
         inkly: {

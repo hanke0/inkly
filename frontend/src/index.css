@@ -21,6 +21,7 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  @apply font-sans lining-nums;
 }
 
 #root {
@@ -89,8 +90,7 @@ body {
 
 @layer components {
   /**
-   * Long-form reading: serif body + UI sans title.
-   * Justification helps CJK rag; pre-wrap keeps indexed line breaks.
+   * Long-form reading: serif body (right pane); document title / MD headings use UI sans.
    */
   .inkly-reading {
     @apply mx-auto w-full min-w-0 max-w-[47rem];
@@ -102,7 +102,7 @@ body {
   }
 
   .inkly-reading__body {
-    @apply font-inkly-read text-inkly-ink-soft;
+    @apply font-inkly-read lining-nums text-inkly-ink-soft;
     font-size: 1.1875rem;
     line-height: 1.8;
     text-align: justify;
@@ -115,6 +115,7 @@ body {
 
   /** Rendered Markdown / HTML (not plain pre-wrap). Contain wide tables / pre / arbitrary HTML. */
   .inkly-reading__body--rich {
+    @apply lining-nums;
     box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
@@ -257,7 +258,7 @@ body {
   }
 
   .inkly-reading__note {
-    @apply font-inkly-read text-inkly-muted;
+    @apply font-inkly-read lining-nums text-inkly-muted;
     font-size: 1rem;
     line-height: 1.75;
     text-align: justify;

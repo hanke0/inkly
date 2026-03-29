@@ -132,10 +132,10 @@ export function BrandHeader({ search }: BrandHeaderProps) {
 
   return (
     <div className="flex flex-col gap-2 font-inkly-read-ui">
-      <h1 className="m-0 text-lg font-medium leading-none tracking-tight">
+      <h1 className="m-0 text-xl font-medium leading-none tracking-tight md:text-2xl">
         <Link
           to="/"
-          className="font-serif text-inkly-ink transition-colors hover:text-inkly-accent focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inkly-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-inkly-sidebar"
+          className="font-inkly-logo text-inkly-ink transition-colors hover:text-inkly-accent focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inkly-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-inkly-sidebar"
         >
           Inkly
         </Link>
