@@ -4,6 +4,9 @@
 //! upstream `Qwen/Qwen3.5-2B` safetensors build uses a hybrid text stack that does not match
 //! Candle’s dense `qwen3` loader. Default GGUF: `unsloth/Qwen3.5-2B-GGUF` + `Qwen/Qwen3.5-2B`
 //! tokenizer.
+//!
+//! Set [`SummarizerConfig::hf_hub_cache_dir`] (e.g. `{DATA_DIR}/huggingface/hub`) so downloads and
+//! subsequent loads use that cache instead of the global default (`~/.cache/huggingface/hub`).
 
 mod device;
 mod error;
@@ -16,7 +19,10 @@ use candle_core::quantized::gguf_file;
 use candle_core::Tensor;
 use candle_transformers::generation::{LogitsProcessor, Sampling};
 use candle_transformers::models::quantized_qwen3::ModelWeights as Qwen3Gguf;
-use hf_hub::{api::sync::Api, Repo, RepoType};
+use hf_hub::{
+    api::sync::{Api, ApiBuilder},
+    Repo, RepoType,
+};
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
 use tracing::instrument;
@@ -36,6 +42,10 @@ pub struct SummarizerConfig {
     pub gguf_filename: String,
     pub gguf_path: Option<PathBuf>,
     pub tokenizer_path: Option<PathBuf>,
+    /// When set, Hugging Face downloads use this directory as the **hub** cache root
+    /// (same layout as `~/.cache/huggingface/hub`: `snapshots/`, `blobs/`, …).
+    /// Typical inkly path: `{DATA_DIR}/huggingface/hub`.
+    pub hf_hub_cache_dir: Option<PathBuf>,
     /// When true (default), prefer CUDA (Linux/Windows) or Metal (macOS) if available; otherwise use CPU.
     pub prefer_gpu: bool,
     /// Hard cap on document characters (Unicode scalar count) fed to the model.
@@ -52,12 +62,13 @@ pub struct SummarizerConfig {
 impl Default for SummarizerConfig {
     fn default() -> Self {
         Self {
-            tokenizer_repo: "Qwen/Qwen3.5-2B".to_string(),
-            gguf_repo: "unsloth/Qwen3.5-2B-GGUF".to_string(),
+            tokenizer_repo: "Qwen/Qwen3-1.7B".to_string(),
+            gguf_repo: "unsloth/Qwen3-1.7B-GGUF".to_string(),
             gguf_revision: "main".to_string(),
-            gguf_filename: "Qwen3.5-2B-Q4_K_M.gguf".to_string(),
+            gguf_filename: "Qwen3-1.7B-Q4_K_M.gguf".to_string(),
             gguf_path: None,
             tokenizer_path: None,
+            hf_hub_cache_dir: None,
             prefer_gpu: true,
             max_article_chars: 12_000,
             max_new_tokens: 512,
@@ -197,11 +208,21 @@ impl Summarizer {
     }
 }
 
+fn hub_api(config: &SummarizerConfig) -> Result<Api, SummarizeError> {
+    if let Some(dir) = &config.hf_hub_cache_dir {
+        return ApiBuilder::new()
+            .with_cache_dir(dir.clone())
+            .build()
+            .map_err(SummarizeError::from);
+    }
+    Api::new().map_err(SummarizeError::from)
+}
+
 fn resolve_gguf_path(config: &SummarizerConfig) -> Result<PathBuf, SummarizeError> {
     if let Some(p) = &config.gguf_path {
         return Ok(p.clone());
     }
-    let api = Api::new()?;
+    let api = hub_api(config)?;
     let path = api
         .repo(Repo::with_revision(
             config.gguf_repo.clone(),
@@ -216,7 +237,7 @@ fn resolve_tokenizer_path(config: &SummarizerConfig) -> Result<PathBuf, Summariz
     if let Some(p) = &config.tokenizer_path {
         return Ok(p.clone());
     }
-    let api = Api::new()?;
+    let api = hub_api(config)?;
     let api = api.model(config.tokenizer_repo.clone());
     let path = api.get("tokenizer.json")?;
     Ok(path)

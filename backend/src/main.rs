@@ -9,6 +9,7 @@ use axum::http::{HeaderValue, Method};
 use axum::routing::{get, post};
 use axum::Router;
 use inkly_search::IndexManager;
+use inkly_summarize::{Summarizer, SummarizerConfig};
 use routes::{
     catalog, delete_document, get_document, healthz, index_document, index_document_upload,
     index_documents_bulk, search, session,
@@ -64,6 +65,24 @@ async fn main() {
         }
     };
 
+    let hf_hub_cache = config.data_dir.join("huggingface").join("hub");
+    if let Err(e) = std::fs::create_dir_all(&hf_hub_cache) {
+        eprintln!("startup error: failed to create Hugging Face cache dir {}: {e}", hf_hub_cache.display());
+        return;
+    }
+
+    let summarizer_cfg = SummarizerConfig {
+        hf_hub_cache_dir: Some(hf_hub_cache),
+        ..SummarizerConfig::default()
+    };
+    let summarizer = match Summarizer::load(summarizer_cfg) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("startup error: failed to initialize summarizer: {e}");
+            return;
+        }
+    };
+
     let cors_layer = match build_cors_layer(&config) {
         Ok(l) => l,
         Err(e) => {
@@ -72,7 +91,7 @@ async fn main() {
         }
     };
 
-    let state = AppState::new(index, config.username, config.password);
+    let state = AppState::new(index, summarizer, config.username, config.password);
     let auth_layer = axum::middleware::from_fn_with_state(state.clone(), auth::auth_middleware);
 
     let app = Router::new()

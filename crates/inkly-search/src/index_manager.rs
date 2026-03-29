@@ -25,6 +25,7 @@ pub struct SearchResultItem {
     pub title: String,
     pub doc_url: String,
     pub snippet: String,
+    pub summary: String,
     pub score: f32,
     pub created_at: i64,
     pub updated_at: i64,
@@ -49,6 +50,7 @@ pub struct StoredDocument {
     pub doc_id: u64,
     pub title: String,
     pub content: String,
+    pub summary: String,
     pub doc_url: String,
     pub path: String,
     pub note: String,
@@ -96,6 +98,7 @@ pub struct IndexManager {
     doc_url_field: Field,
     title_field: Field,
     content_field: Field,
+    summary_field: Field,
     created_timestamp_field: Field,
     update_timestamp_field: Field,
     tags_field: Field,
@@ -178,6 +181,9 @@ impl IndexManager {
         let content_field = schema
             .get_field("content")
             .map_err(|_| SearchError::InvalidInput("missing content field".into()))?;
+        let summary_field = schema
+            .get_field("summary")
+            .map_err(|_| SearchError::InvalidInput("missing summary field".into()))?;
         let created_timestamp_field = schema
             .get_field("created_timestamp")
             .map_err(|_| SearchError::InvalidInput("missing created_timestamp field".into()))?;
@@ -217,6 +223,7 @@ impl IndexManager {
             tags_field,
             path_field,
             note_field,
+            summary_field,
         })
     }
 
@@ -248,6 +255,7 @@ impl IndexManager {
         let _doc_url = builder.add_text_field("doc_url", STRING | STORED);
         let _title = builder.add_text_field("title", TEXT | STORED);
         let _content = builder.add_text_field("content", TEXT | STORED);
+        let _summary = builder.add_text_field("summary", TEXT | STORED);
         let _created_timestamp = builder.add_i64_field("created_timestamp", STORED);
         let _update_timestamp = builder.add_i64_field("update_timestamp", STORED);
         let _tags = builder.add_text_field("tags", STRING | STORED);
@@ -271,6 +279,7 @@ impl IndexManager {
         doc_id: u64,
         title: &str,
         content: &str,
+        summary: &str,
         doc_url: &str,
         tags: &[String],
         path: &str,
@@ -311,6 +320,7 @@ impl IndexManager {
             self.doc_url_field => doc_url,
             self.title_field => title,
             self.content_field => content,
+            self.summary_field => summary,
             self.created_timestamp_field => created_at,
             self.update_timestamp_field => updated_at,
             self.path_field => path,
@@ -332,7 +342,7 @@ impl IndexManager {
     pub fn index_documents(
         &self,
         tenant_id: &str,
-        docs: impl IntoIterator<Item = (u64, String, String, String, Vec<String>, String, String)>,
+        docs: impl IntoIterator<Item = (u64, String, String, String, Vec<String>, String, String, String)>,
     ) -> Result<IndexStats> {
         let now = Self::now_unix_seconds()?;
 
@@ -342,7 +352,7 @@ impl IndexManager {
             let reader = self.index.reader()?;
             let searcher = reader.searcher();
             let mut v = Vec::with_capacity(docs.len());
-            for (doc_id, _, _, _, _, _, _) in &docs {
+            for (doc_id, _, _, _, _, _, _, _) in &docs {
                 let created_at = self
                     .existing_created_at(&searcher, tenant_id, *doc_id)?
                     .unwrap_or(now);
@@ -354,7 +364,7 @@ impl IndexManager {
         let mut writer = self.index.writer(50_000_000)?;
         let mut indexed = 0u64;
 
-        for ((doc_id, title, content, doc_url, tags, path, note), created_at) in
+        for ((doc_id, title, content, doc_url, tags, path, note, summary), created_at) in
             docs.into_iter().zip(created_at_per_doc)
         {
             let updated_at = now;
@@ -377,6 +387,7 @@ impl IndexManager {
                 self.doc_url_field => doc_url,
                 self.title_field => title,
                 self.content_field => content,
+                self.summary_field => summary,
                 self.created_timestamp_field => created_at,
                 self.update_timestamp_field => updated_at,
                 self.path_field => path,
@@ -461,9 +472,26 @@ impl IndexManager {
         let mut results = Vec::with_capacity(hits.len());
         for (score, doc_address) in hits {
             let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-            let title = retrieved.get_first(self.title_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let content = retrieved.get_first(self.content_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let note = retrieved.get_first(self.note_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let title = retrieved
+                .get_first(self.title_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let content = retrieved
+                .get_first(self.content_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let summary = retrieved
+                .get_first(self.summary_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let note = retrieved
+                .get_first(self.note_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let doc_id = retrieved.get_first(self.doc_id_field).and_then(|v| v.as_u64()).unwrap_or(0);
             let doc_url = retrieved.get_first(self.doc_url_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
             let created_at = retrieved.get_first(self.created_timestamp_field).and_then(|v| v.as_i64()).unwrap_or(0);
@@ -474,13 +502,20 @@ impl IndexManager {
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect::<Vec<_>>();
 
-            let snippet_source = if content.trim().is_empty() { &note } else { &content };
+            let snippet_source = if !summary.trim().is_empty() {
+                &summary
+            } else if content.trim().is_empty() {
+                &note
+            } else {
+                &content
+            };
             let snippet = snippet_source.chars().take(220).collect::<String>();
             results.push(SearchResultItem {
                 doc_id,
                 title,
                 doc_url,
                 snippet,
+                summary,
                 score,
                 created_at,
                 updated_at,
@@ -612,6 +647,11 @@ impl IndexManager {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
+            summary: retrieved
+                .get_first(self.summary_field)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             doc_url: retrieved
                 .get_first(self.doc_url_field)
                 .and_then(|v| v.as_str())
@@ -690,8 +730,9 @@ mod tests {
             "Alpha",
             "body one",
             "",
-            &["rust".to_string()],
             "/proj/",
+            &["rust".to_string()],
+            "",
             "",
         )
         .expect("idx1");
@@ -701,8 +742,9 @@ mod tests {
             "Beta",
             "body two",
             "",
-            &["rust".to_string(), "cli".to_string()],
             "/proj/sub/",
+            &["rust".to_string(), "cli".to_string()],
+            "",
             "",
         )
         .expect("idx2");
@@ -712,8 +754,9 @@ mod tests {
             "Gamma",
             "body three",
             "",
-            &[],
             "/other/",
+            &[],
+            "",
             "",
         )
         .expect("idx3");
@@ -772,7 +815,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let im = IndexManager::open_or_create(dir.path()).expect("open");
         let tenant = "t_delete";
-        im.index_document(tenant, 42, "Hi", "body", "", &[], "/", "")
+        im.index_document(tenant, 42, "Hi", "body", "", "/", &[], "", "")
             .expect("idx");
         assert!(im.delete_document(tenant, 42).expect("del"));
         assert!(!im.delete_document(tenant, 42).expect("del again"));

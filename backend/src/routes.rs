@@ -17,6 +17,7 @@ use inkly_contract::dto::{
 use std::result::Result;
 
 use inkly_search::SearchError;
+use tracing::warn;
 use tracing::info;
 
 #[derive(Serialize)]
@@ -129,6 +130,7 @@ pub async fn index_document(
     let path = input.path;
     let note = input.note;
     let index = state.index.clone();
+    let summarizer = state.summarizer.clone();
 
     info!(
         tenant_id = %tenant_id,
@@ -145,11 +147,28 @@ pub async fn index_document(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
+
+        // Best-effort summary generation; failures do not abort indexing.
+        let mut summary = String::new();
+        match summarizer.lock() {
+            Ok(mut guard) => {
+                if let Err(e) = guard.summarize(&content).map(|s| {
+                    summary = s;
+                }) {
+                    warn!(error = %e, "summarizer failed for single document");
+                }
+            }
+            Err(_) => {
+                warn!("summarizer lock poisoned");
+            }
+        }
+
         let stats = index.index_document(
             &tenant_id,
             doc_id,
             &title,
             &content,
+            &summary,
             &doc_url,
             &tags,
             &path,
@@ -286,6 +305,7 @@ pub async fn index_document_upload(
     let path = input.path;
     let note = input.note;
     let index = state.index.clone();
+    let summarizer = state.summarizer.clone();
 
     info!(
         tenant_id = %tenant_id,
@@ -302,11 +322,27 @@ pub async fn index_document_upload(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
+
+        let mut summary = String::new();
+        match summarizer.lock() {
+            Ok(mut guard) => {
+                if let Err(e) = guard.summarize(&content).map(|s| {
+                    summary = s;
+                }) {
+                    warn!(error = %e, "summarizer failed for upload document");
+                }
+            }
+            Err(_) => {
+                warn!("summarizer lock poisoned (upload)");
+            }
+        }
+
         let stats = index.index_document(
             &tenant_id,
             doc_id,
             &title,
             &content,
+            &summary,
             &doc_url,
             &tags,
             &path,
@@ -342,6 +378,7 @@ pub async fn index_documents_bulk(
     let tenant_id = user.tenant_id;
     let documents = input.documents;
     let index = state.index.clone();
+    let summarizer = state.summarizer.clone();
 
     info!(
         tenant_id = %tenant_id,
@@ -351,7 +388,7 @@ pub async fn index_documents_bulk(
     );
 
     let (stats, doc_ids) = tokio::task::spawn_blocking(move || {
-        let mut rows: Vec<(u64, String, String, String, Vec<String>, String, String)> =
+        let mut rows: Vec<(u64, String, String, String, Vec<String>, String, String, String)> =
             Vec::with_capacity(documents.len());
         let mut ids = Vec::with_capacity(documents.len());
         for d in documents {
@@ -361,6 +398,19 @@ pub async fn index_documents_bulk(
                 d.doc_id.unwrap_or(0)
             };
             ids.push(doc_id);
+            let mut summary = String::new();
+            match summarizer.lock() {
+                Ok(mut guard) => {
+                    if let Err(e) = guard.summarize(&d.content).map(|s| {
+                        summary = s;
+                    }) {
+                        warn!(error = %e, "summarizer failed for bulk document");
+                    }
+                }
+                Err(_) => {
+                    warn!("summarizer lock poisoned (bulk)");
+                }
+            }
             rows.push((
                 doc_id,
                 d.title,
@@ -369,6 +419,7 @@ pub async fn index_documents_bulk(
                 d.tags,
                 d.path,
                 d.note,
+                summary,
             ));
         }
         let stats = index.index_documents(&tenant_id, rows)?;
@@ -462,6 +513,7 @@ pub async fn search(
             title: it.title,
             doc_url: it.doc_url,
             snippet: it.snippet,
+            summary: it.summary,
             score: it.score,
             created_at: it.created_at,
             updated_at: it.updated_at,
@@ -541,6 +593,7 @@ pub async fn get_document(
         doc_id: d.doc_id,
         title: d.title,
         content: d.content,
+        summary: d.summary,
         doc_url: d.doc_url,
         path: d.path,
         note: d.note,

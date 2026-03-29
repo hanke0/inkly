@@ -52,6 +52,8 @@ pub struct SearchResult {
     pub title: String,
     pub doc_url: String,
     pub snippet: String,
+    /// Short model-generated summary of the document content, in the same language as `content`.
+    pub summary: String,
     pub score: f32,
     pub created_at: i64,
     pub updated_at: i64,
@@ -108,6 +110,7 @@ pub struct DocumentDetailResponse {
     pub doc_id: u64,
     pub title: String,
     pub content: String,
+    pub summary: String,
     pub doc_url: String,
     pub path: String,
     pub note: String,

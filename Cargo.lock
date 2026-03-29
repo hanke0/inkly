@@ -1784,6 +1784,7 @@ dependencies = [
  "include_dir",
  "inkly-contract",
  "inkly-search",
+ "inkly-summarize",
  "mime_guess",
  "serde",
  "serde_json",

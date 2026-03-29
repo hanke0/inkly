@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Result, SearchError};
 
 /// Bump when on-disk semantics change; mismatch causes startup failure.
-pub const STORAGE_DATA_VERSION: u32 = 1;
+pub const STORAGE_DATA_VERSION: u32 = 2;
 
 /// First value returned by `allocate_doc_id` on a fresh store (`auto_increment` in file).
 pub const DEFAULT_AUTO_INCREMENT_NEXT: u64 = 1000;
