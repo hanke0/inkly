@@ -131,6 +131,27 @@ export async function fetchDocument(docId: number): Promise<DocumentDetailRespon
   });
 }
 
+export async function deleteDocument(docId: number): Promise<void> {
+  const headers = new Headers();
+  applyBasicAuth(headers);
+
+  const res = await fetch(`/v1/documents/${docId}`, { method: "DELETE", headers });
+
+  if (res.status === 204) {
+    return;
+  }
+
+  let body: unknown = null;
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    body = await res.json().catch(() => null);
+  } else {
+    body = await res.text().catch(() => null);
+  }
+  const err = (body as ErrorBody | null)?.error;
+  throw new Error(err ?? `Request failed: ${res.status}`);
+}
+
 export async function fetchSession(): Promise<SessionResponse> {
   return apiFetch<SessionResponse>("/v1/session", { method: "GET" });
 }

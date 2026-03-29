@@ -51,7 +51,7 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
       >
         <div className="flex items-center justify-between gap-3 border-b border-inkly-line px-4 py-3 sm:px-5">
           <h2 id={titleId} className="font-inkly-read-ui text-base font-semibold text-inkly-ink">
-            New document
+            {form.isEditing ? "Edit document" : "New document"}
           </h2>
           <button
             type="button"

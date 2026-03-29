@@ -641,6 +641,36 @@ impl IndexManager {
                 .unwrap_or(0),
         }))
     }
+
+    /// Removes the document for `tenant_id` and `doc_id`. Returns `Ok(false)` when nothing matched.
+    pub fn delete_document(&self, tenant_id: &str, doc_id: u64) -> Result<bool> {
+        if tenant_id.trim().is_empty() {
+            return Err(SearchError::InvalidInput("tenant_id is empty".into()));
+        }
+
+        let exists = {
+            let reader = self.index.reader()?;
+            let searcher = reader.searcher();
+            self.existing_created_at(&searcher, tenant_id, doc_id)?
+                .is_some()
+        };
+
+        if !exists {
+            return Ok(false);
+        }
+
+        let mut writer = self.index.writer::<tantivy::TantivyDocument>(50_000_000)?;
+        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
+        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
+        let delete_query = BooleanQuery::new(vec![
+            (Occur::Must, Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic))),
+            (Occur::Must, Box::new(TermQuery::new(doc_id_term, IndexRecordOption::Basic))),
+        ]);
+        writer.delete_query(Box::new(delete_query))?;
+        writer.commit()?;
+
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -735,5 +765,17 @@ mod tests {
         assert_eq!(direct_subdir_under("/a/", "/a/"), None);
         assert_eq!(direct_subdir_under("/a/", "/b/"), None);
         assert_eq!(direct_subdir_under("/a/", "/ab/"), None);
+    }
+
+    #[test]
+    fn delete_document_removes_and_reports_missing() {
+        let dir = tempdir().expect("tempdir");
+        let im = IndexManager::open_or_create(dir.path()).expect("open");
+        let tenant = "t_delete";
+        im.index_document(tenant, 42, "Hi", "body", "", &[], "/", "")
+            .expect("idx");
+        assert!(im.delete_document(tenant, 42).expect("del"));
+        assert!(!im.delete_document(tenant, 42).expect("del again"));
+        assert!(im.get_document(tenant, 42).expect("get").is_none());
     }
 }

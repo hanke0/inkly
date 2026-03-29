@@ -1,11 +1,18 @@
 import { useRef, useState } from "react";
 
 import { indexDocument, indexDocumentUpload } from "../api";
-import type { DocumentIn, IndexResponse } from "../types";
+import type { DocumentDetailResponse, DocumentIn, IndexResponse } from "../types";
 
-export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
+export type IndexSuccessContext = {
+  updatedDocId?: number;
+};
+
+export function useNewDocumentForm(
+  onSuccess: (res: IndexResponse, ctx: IndexSuccessContext) => void,
+) {
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
+  const [editingDocId, setEditingDocId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [contentFile, setContentFile] = useState<File | null>(null);
@@ -18,6 +25,8 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const isEditing = editingDocId !== null;
+
   function clearFileInput() {
     setContentFile(null);
     if (contentFileInputRef.current) {
@@ -25,12 +34,31 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
     }
   }
 
-  /** Call when opening the modal; optionally scope `path` to the current catalog folder. */
+  /** Call when opening the modal for a new document; optionally scope `path` to the current catalog folder. */
   function prepareOpen(options?: { path?: string }) {
     setFormError("");
+    setEditingDocId(null);
+    setTitle("");
+    setContent("");
+    clearFileInput();
+    setDocUrl("");
+    setTagsText("");
+    setNote("");
     if (options?.path !== undefined) {
       setPath(options.path);
     }
+  }
+
+  function prepareEdit(d: DocumentDetailResponse) {
+    setFormError("");
+    setEditingDocId(d.doc_id);
+    setTitle(d.title);
+    setContent(d.content);
+    clearFileInput();
+    setDocUrl(d.doc_url);
+    setTagsText(d.tags.join(", "));
+    setPath(d.path);
+    setNote(d.note);
   }
 
   async function submit(e: React.FormEvent) {
@@ -43,6 +71,8 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
       .map((t) => t.trim())
       .filter(Boolean);
 
+    const updateId = editingDocId;
+
     try {
       let res: IndexResponse;
       if (contentFile) {
@@ -53,6 +83,9 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
         fd.append("path", path.trim());
         fd.append("note", note);
         fd.append("tags", tagsText);
+        if (updateId != null) {
+          fd.append("doc_id", String(updateId));
+        }
         res = await indexDocumentUpload(fd);
       } else {
         if (!content.trim()) {
@@ -68,9 +101,12 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
           path: path.trim(),
           note,
         };
+        if (updateId != null) {
+          payload.doc_id = updateId;
+        }
         res = await indexDocument(payload);
       }
-      onSuccessRef.current(res);
+      onSuccessRef.current(res, updateId != null ? { updatedDocId: updateId } : {});
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Index request failed.");
     } finally {
@@ -100,6 +136,8 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
     setFormError,
     submit,
     prepareOpen,
+    prepareEdit,
+    isEditing,
   };
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { fetchDocument, search } from "./api";
+import { deleteDocument, fetchDocument, search } from "./api";
 import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
 import { BrandHeader, DEFAULT_SEARCH_LIMIT } from "./components/BrandHeader";
 import { CatalogSidebar } from "./components/CatalogSidebar";
@@ -23,9 +23,16 @@ export default function DocumentView() {
   const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(returnPath);
 
   const [indexModalOpen, setIndexModalOpen] = useState(false);
-  const newDocForm = useNewDocumentForm(() => {
+  const newDocForm = useNewDocumentForm((_, ctx) => {
     void reloadCatalog();
     setIndexModalOpen(false);
+    if (ctx.updatedDocId != null && ctx.updatedDocId === docId) {
+      void fetchDocument(docId)
+        .then((d) => setDoc(d))
+        .catch((err) =>
+          setError(err instanceof Error ? err.message : "Failed to refresh document."),
+        );
+    }
   });
 
   const [doc, setDoc] = useState<DocumentDetailResponse | null>(null);
@@ -84,6 +91,32 @@ export default function DocumentView() {
   function openNewDocumentModal() {
     newDocForm.prepareOpen({ path: returnPath });
     setIndexModalOpen(true);
+  }
+
+  function openEditDocumentModal() {
+    if (!doc) {
+      return;
+    }
+    newDocForm.prepareEdit(doc);
+    setIndexModalOpen(true);
+  }
+
+  async function confirmDeleteDocument() {
+    if (!doc) {
+      return;
+    }
+    const label = doc.title.trim() || `Document ${doc.doc_id}`;
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) {
+      return;
+    }
+    setError("");
+    try {
+      await deleteDocument(doc.doc_id);
+      void reloadCatalog();
+      navigate({ pathname: "/", search: `?path=${encodeURIComponent(returnPath)}` });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed.");
+    }
   }
 
   async function runSearch() {
@@ -197,7 +230,25 @@ export default function DocumentView() {
                   : "inkly-reading min-w-0 max-w-full pb-2 md:pb-3"
               }
             >
-              <h1 className="inkly-reading__title shrink-0">{doc.title}</h1>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h1 className="inkly-reading__title min-w-0 shrink-0">{doc.title}</h1>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={openEditDocumentModal}
+                    className="rounded-md border border-inkly-border/90 bg-white px-2.5 py-1 text-[12px] font-medium text-inkly-ink shadow-sm transition hover:border-inkly-accent/50 hover:bg-inkly-paper-warm/30"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmDeleteDocument()}
+                    className="rounded-md border border-red-200/90 bg-white px-2.5 py-1 text-[12px] font-medium text-red-800 shadow-sm transition hover:border-red-300 hover:bg-red-50/80"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
               <div className="mt-2 flex min-w-0 shrink-0 flex-wrap items-center gap-x-1 gap-y-0 text-[11px] leading-tight text-inkly-muted">
                 <span className="min-w-0 truncate font-mono" title={doc.path}>
                   {doc.path}

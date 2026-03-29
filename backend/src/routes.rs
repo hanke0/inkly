@@ -1,4 +1,5 @@
 use axum::extract::{Json, Multipart, Path, Query, State};
+use axum::http::StatusCode;
 use axum::Extension;
 use axum::response::IntoResponse;
 // (no router helpers here; handlers are wired in `main.rs`)
@@ -547,5 +548,36 @@ pub async fn get_document(
         created_at: d.created_at,
         updated_at: d.updated_at,
     }))
+}
+
+pub async fn delete_document(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
+    Path(doc_id): Path<u64>,
+) -> Result<StatusCode, ApiError> {
+    if doc_id == 0 {
+        return Err(ApiError::bad_request("invalid doc_id"));
+    }
+
+    let tenant_id = user.tenant_id;
+    let index = state.index.clone();
+
+    info!(
+        tenant_id = %tenant_id,
+        user_id = %user.user_id,
+        doc_id = doc_id,
+        "delete_document"
+    );
+
+    let removed = tokio::task::spawn_blocking(move || index.delete_document(&tenant_id, doc_id))
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .map_err(ApiError::from)?;
+
+    if !removed {
+        return Err(ApiError::NotFound);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 

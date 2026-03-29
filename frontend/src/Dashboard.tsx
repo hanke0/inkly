@@ -30,14 +30,18 @@ export default function Dashboard() {
   const catalogUrlPath = searchParams.get("path")?.trim() || "/";
   const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(catalogUrlPath);
 
-  const newDocForm = useNewDocumentForm((res) => {
+  const newDocForm = useNewDocumentForm((res, ctx) => {
     void reloadCatalog();
     setIndexModalOpen(false);
-    setActionStatus(
-      typeof res.doc_id === "number"
-        ? `Indexed successfully (doc #${res.doc_id}).`
-        : "Indexed successfully.",
-    );
+    if (ctx.updatedDocId != null) {
+      setActionStatus(`Updated document #${ctx.updatedDocId}.`);
+    } else {
+      setActionStatus(
+        typeof res.doc_id === "number"
+          ? `Indexed successfully (doc #${res.doc_id}).`
+          : "Indexed successfully.",
+      );
+    }
   });
 
   const docLink = (docIdNum: number, folderPath: string) =>

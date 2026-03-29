@@ -52,6 +52,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
     loading,
     formError,
     submit,
+    isEditing,
   } = form;
 
   return (
@@ -192,7 +193,13 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           disabled={loading}
           className="rounded-lg bg-inkly-accent px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-inkly-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Indexing…" : "Index document"}
+          {loading
+            ? isEditing
+              ? "Saving…"
+              : "Indexing…"
+            : isEditing
+              ? "Save changes"
+              : "Index document"}
         </button>
       </div>
     </form>

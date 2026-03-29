@@ -10,8 +10,8 @@ use axum::routing::{get, post};
 use axum::Router;
 use inkly_search::IndexManager;
 use routes::{
-    catalog, get_document, healthz, index_document, index_document_upload, index_documents_bulk,
-    search, session,
+    catalog, delete_document, get_document, healthz, index_document, index_document_upload,
+    index_documents_bulk, search, session,
 };
 use state::AppState;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
@@ -37,7 +37,7 @@ fn build_cors_layer(config: &config::Config) -> Result<CorsLayer, String> {
 
     Ok(CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
         // Preflight for multipart + Basic auth may request arbitrary client headers.
         .allow_headers(Any))
 }
@@ -87,7 +87,9 @@ async fn main() {
         )
         .route(
             "/v1/documents/{doc_id}",
-            get(get_document).layer(auth_layer.clone()),
+            get(get_document)
+                .delete(delete_document)
+                .layer(auth_layer.clone()),
         )
         .route(
             "/v1/documents",
