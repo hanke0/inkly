@@ -30,6 +30,8 @@ metal = [
   "candle-transformers/metal",
 ]
 # Faster CPU: Apple → --features accelerate; x86 + Intel MKL → --features mkl
+# On Linux/WSL you need oneAPI MKL-devel (e.g. apt: intel-oneapi-mkl-devel, libomp-dev).
+# The crates.io MKL fallback (MKL 2020.1) is too old for Candle’s f16 matmul (missing hgemm_).
 mkl = [
   "candle-core/mkl",
   "candle-nn/mkl",

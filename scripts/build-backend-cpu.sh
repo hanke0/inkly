@@ -3,6 +3,8 @@
 set -eo pipefail
 
 cd "$(dirname "$0")/.."
+# shellcheck source=mkl-env.sh
+source "$(dirname "$0")/mkl-env.sh"
 
 cmd="${1:-build}"
 [ $# -gt 0 ] && shift
@@ -21,7 +23,9 @@ Darwin)
 	exec cargo $cmd -p inkly --features accelerate --release "$@"
 	;;
 Linux)
-	exec cargo $cmd -p inkly --features cuda --release "$@"
+	inkly_oneapi_mkl_env
+	inkly_mkl_preflight_or_die
+	exec cargo $cmd -p inkly --features mkl --release "$@"
 	;;
 MINGW* | MSYS* | CYGWIN*)
 	exec cargo $cmd -p inkly --features mkl --release "$@"
