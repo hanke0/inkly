@@ -19,7 +19,7 @@ body {
    * Justification helps CJK rag; pre-wrap keeps indexed line breaks.
    */
   .inkly-reading {
-    @apply mx-auto w-full max-w-[47rem];
+    @apply mx-auto w-full min-w-0 max-w-[47rem];
   }
 
   .inkly-reading__title {
@@ -38,6 +38,143 @@ body {
     word-break: break-word;
     overflow-wrap: break-word;
     white-space: pre-wrap;
+  }
+
+  /** Rendered Markdown / HTML (not plain pre-wrap). Contain wide tables / pre / arbitrary HTML. */
+  .inkly-reading__body--rich {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: normal;
+    text-align: start;
+    text-justify: auto;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .inkly-reading__body--rich > *:first-child {
+    margin-top: 0;
+  }
+
+  .inkly-reading__body--rich > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .inkly-reading__body--rich h1,
+  .inkly-reading__body--rich h2,
+  .inkly-reading__body--rich h3,
+  .inkly-reading__body--rich h4 {
+    @apply font-inkly-read-ui font-semibold text-inkly-ink;
+    line-height: 1.35;
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+  }
+
+  .inkly-reading__body--rich h1 {
+    font-size: 1.5rem;
+  }
+
+  .inkly-reading__body--rich h2 {
+    font-size: 1.35rem;
+  }
+
+  .inkly-reading__body--rich h3 {
+    font-size: 1.2rem;
+  }
+
+  .inkly-reading__body--rich h4 {
+    font-size: 1.1rem;
+  }
+
+  .inkly-reading__body--rich p {
+    margin: 0.65em 0;
+  }
+
+  .inkly-reading__body--rich ul,
+  .inkly-reading__body--rich ol {
+    margin: 0.65em 0;
+    padding-left: 1.35em;
+  }
+
+  .inkly-reading__body--rich li {
+    margin: 0.25em 0;
+  }
+
+  .inkly-reading__body--rich blockquote {
+    @apply border-l-2 border-inkly-line text-inkly-muted;
+    margin: 0.85em 0;
+    padding-left: 1rem;
+  }
+
+  .inkly-reading__body--rich a {
+    @apply text-inkly-link underline decoration-inkly-line underline-offset-2 hover:text-inkly-link-hover;
+  }
+
+  .inkly-reading__body--rich code {
+    @apply rounded bg-inkly-sidebar px-1 py-0.5 font-mono text-[0.9em] text-inkly-ink;
+  }
+
+  .inkly-reading__body--rich pre {
+    @apply max-w-full overflow-x-auto rounded-md border border-inkly-border bg-inkly-sidebar p-3 font-mono text-[0.9em] text-inkly-ink;
+    margin: 0.85em 0;
+    line-height: 1.55;
+  }
+
+  .inkly-reading__body--rich pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .inkly-reading__body--rich hr {
+    @apply border-inkly-line;
+    margin: 1.5em 0;
+  }
+
+  .inkly-reading__body--rich table {
+    @apply w-full border-collapse text-[0.95em];
+    margin: 0.85em 0;
+  }
+
+  .inkly-reading__body--rich th,
+  .inkly-reading__body--rich td {
+    @apply border border-inkly-border px-2 py-1.5 text-left align-top;
+  }
+
+  .inkly-reading__body--rich th {
+    @apply bg-inkly-sidebar font-inkly-read-ui font-medium text-inkly-ink;
+  }
+
+  .inkly-reading__body--rich img {
+    @apply my-3 max-h-[min(70vh,32rem)] max-w-full rounded-md border border-inkly-border;
+  }
+
+  .inkly-reading__body--rich video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .inkly-reading__body--rich svg {
+    max-width: 100%;
+  }
+
+  .inkly-reading__body--rich .katex-display {
+    overflow-x: auto;
+    padding: 0.35em 0;
+  }
+
+  .inkly-reading__body--rich iframe {
+    max-width: 100%;
+  }
+
+  /** Sandboxed HTML document view */
+  .inkly-reading__iframe-shell {
+    @apply overflow-hidden rounded-md border border-inkly-border bg-white shadow-sm;
+  }
+
+  .inkly-reading__iframe {
+    @apply block w-full border-0 bg-white;
+    height: min(75vh, 56rem);
+    min-height: 280px;
   }
 
   .inkly-reading__note {

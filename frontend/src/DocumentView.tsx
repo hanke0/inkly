@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { clearStoredCredentials, fetchDocument, search } from "./api";
 import { BrandHeader } from "./components/BrandHeader";
 import { CatalogSidebar } from "./components/CatalogSidebar";
+import { DocumentBody } from "./components/DocumentBody";
 import { NewDocumentModal } from "./components/NewDocumentModal";
 import { SearchResultsDialog } from "./components/SearchResultsDialog";
 import { useCatalog } from "./hooks/useCatalog";
@@ -137,7 +138,7 @@ export default function DocumentView() {
         </aside>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper">
-          <div className="flex-1 overflow-y-auto bg-inkly-paper px-5 py-6 md:px-8">
+          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-inkly-paper px-5 py-6 md:px-8">
             {searchErr ? (
               <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                 {searchErr}
@@ -153,7 +154,7 @@ export default function DocumentView() {
             {loading ? (
               <p className="text-sm text-inkly-muted">Loading…</p>
             ) : doc ? (
-              <article className="inkly-reading pb-8">
+              <article className="inkly-reading min-w-0 max-w-full pb-8">
                 <h1 className="inkly-reading__title">{doc.title}</h1>
                 <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0 text-[11px] leading-tight text-inkly-muted">
                   <span className="min-w-0 truncate font-mono" title={doc.path}>
@@ -199,7 +200,7 @@ export default function DocumentView() {
                     </div>
                   </details>
                 ) : null}
-                <div className="inkly-reading__body mt-6">{doc.content}</div>
+                <DocumentBody content={doc.content} />
               </article>
             ) : null}
           </div>
