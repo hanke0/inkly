@@ -7,6 +7,13 @@
 //!
 //! Set [`SummarizerConfig::hf_hub_cache_dir`] (e.g. `{DATA_DIR}/huggingface/hub`) so downloads and
 //! subsequent loads use that cache instead of the global default (`~/.cache/huggingface/hub`).
+//!
+//! **CPU performance:** Always run the host binary with `cargo build --release` (or equivalent).
+//! Candle uses Rayon; set `RAYON_NUM_THREADS` to your physical core count if throughput is low.
+//! Prefer a **Q4** GGUF over Q8 for less memory traffic. Enable Cargo features `accelerate` (macOS)
+//! or `mkl` (Intel x86) on `inkly-summarize` for faster linear algebra when not using CUDA/Metal.
+//! Prefill cost on CPU grows roughly with the square of prompt length; keep
+//! [`SummarizerConfig::max_article_chars`] modest for interactive latency.
 
 mod device;
 mod error;
@@ -66,17 +73,20 @@ impl Default for SummarizerConfig {
             tokenizer_repo: "Qwen/Qwen3-0.6B".to_string(),
             gguf_repo: "unsloth/Qwen3-0.6B-GGUF".to_string(),
             gguf_revision: "main".to_string(),
-            gguf_filename: "Qwen3-0.6B-Q8_0.gguf".to_string(),
+            // Q4_K_M: much less bandwidth than Q8_0 on CPU; good speed/quality tradeoff.
+            gguf_filename: "Qwen3-0.6B-Q4_K_M.gguf".to_string(),
             gguf_path: None,
             tokenizer_path: None,
             hf_hub_cache_dir: None,
             prefer_gpu: true,
-            max_article_chars: 12_000,
-            max_new_tokens: 512,
+            // Prefill attention is O(L²) on CPU; 3k chars keeps quality while cutting time vs 6k.
+            max_article_chars: 3_072,
+            // Short summary; smaller cap = faster decode on CPU.
+            max_new_tokens: 128,
             temperature: 0.0,
-            top_p: Some(0.9),
+            top_p: None,
             top_k: None,
-            repeat_penalty: 1.12,
+            repeat_penalty: 1.0,
             repeat_last_n: 64,
             seed: 42,
         }
@@ -153,6 +163,13 @@ impl Summarizer {
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| SummarizeError::Tokenizer(e.to_string()))?;
 
+        if matches!(&device, candle_core::Device::Cpu) {
+            tracing::info!(
+                threads = candle_core::utils::get_num_threads(),
+                "Candle CPU worker threads (override with RAYON_NUM_THREADS)"
+            );
+        }
+
         Ok(Self {
             model,
             tokenizer,
@@ -183,6 +200,9 @@ impl Summarizer {
         if article.trim().is_empty() {
             return Err(SummarizeError::EmptyArticle);
         }
+
+        // New sequence; leftover KV from a prior call would corrupt attention and balloon work.
+        self.model.clear_kv_cache();
 
         let (body, truncated) = clamp_chars(article, self.config.max_article_chars);
         let user = build_user_message(&body, truncated);

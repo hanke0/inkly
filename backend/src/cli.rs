@@ -24,6 +24,12 @@ pub enum Commands {
         /// Article body to summarize (default: built-in English sample).
         #[arg(long)]
         text: Option<String>,
+        /// Cap article length (Unicode chars); prefill cost scales roughly with the square of token count on CPU.
+        #[arg(long)]
+        max_article_chars: Option<usize>,
+        /// Max tokens generated after prefill (lower = faster decode).
+        #[arg(long)]
+        max_new_tokens: Option<usize>,
         /// Number of timed runs (default 1).
         #[arg(long, default_value_t = 1)]
         runs: u32,
@@ -44,6 +50,8 @@ pub fn data_dir() -> PathBuf {
 
 pub fn run_summary_bench(
     text: Option<String>,
+    max_article_chars: Option<usize>,
+    max_new_tokens: Option<usize>,
     runs: u32,
     cpu: bool,
     hf_cache: Option<PathBuf>,
@@ -52,12 +60,22 @@ pub fn run_summary_bench(
     let cache = hf_cache.unwrap_or_else(|| data_root.join("huggingface").join("hub"));
     std::fs::create_dir_all(&cache).map_err(|e| format!("create hf cache dir: {e}"))?;
 
-    let cfg = SummarizerConfig {
+    let mut cfg = SummarizerConfig {
         hf_hub_cache_dir: Some(cache),
         prefer_gpu: !cpu,
         ..SummarizerConfig::default()
     };
+    if let Some(n) = max_article_chars {
+        cfg.max_article_chars = n.max(256);
+    }
+    if let Some(n) = max_new_tokens {
+        cfg.max_new_tokens = n.max(8);
+    }
 
+    eprintln!(
+        "Bench config: max_article_chars={} max_new_tokens={}",
+        cfg.max_article_chars, cfg.max_new_tokens
+    );
     eprintln!("Loading summarizer (first run may download weights)...");
     let mut summarizer = Summarizer::load(cfg).map_err(|e| e.to_string())?;
 
@@ -68,6 +86,7 @@ pub fn run_summary_bench(
     let mut decode_ms = 0.0f64;
     let mut decode_tps = 0.0f64;
     let mut overall_tps = 0.0f64;
+    let mut prompt_tokens_sum = 0u64;
 
     for i in 0..runs {
         let (summary, b) = summarizer
@@ -78,6 +97,7 @@ pub fn run_summary_bench(
         decode_ms += b.decode.as_secs_f64() * 1_000.0;
         decode_tps += b.decode_tokens_per_sec();
         overall_tps += b.overall_tokens_per_sec();
+        prompt_tokens_sum += b.prompt_tokens as u64;
 
         println!(
             "run {}: prompt_tokens={} generated_tokens={} decode_phase_tokens={} \
@@ -99,9 +119,10 @@ pub fn run_summary_bench(
     }
 
     let n = f64::from(runs);
+    let prompt_tok_avg = (prompt_tokens_sum as f64 / n).round() as u64;
     println!("--- average over {runs} run(s) ---");
     println!(
-        "  prefill_ms={:.1} decode_ms={:.1} decode_tok/s={:.2} overall_tok/s={:.2}",
+        "  prompt_tokens≈{prompt_tok_avg} prefill_ms={:.1} decode_ms={:.1} decode_tok/s={:.2} overall_tok/s={:.2}",
         prefill_ms / n,
         decode_ms / n,
         decode_tps / n,

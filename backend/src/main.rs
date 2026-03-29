@@ -57,12 +57,21 @@ fn main() {
         }
         Commands::SummaryBench {
             text,
+            max_article_chars,
+            max_new_tokens,
             runs,
             cpu,
             hf_cache,
         } => {
             dotenvy::dotenv().ok();
-            if let Err(e) = cli::run_summary_bench(text, runs, cpu, hf_cache) {
+            if let Err(e) = cli::run_summary_bench(
+                text,
+                max_article_chars,
+                max_new_tokens,
+                runs,
+                cpu,
+                hf_cache,
+            ) {
                 eprintln!("summary-bench: {e}");
                 std::process::exit(1);
             }
