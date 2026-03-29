@@ -1,4 +1,5 @@
 mod auth;
+mod cli;
 mod config;
 mod error;
 mod routes;
@@ -8,6 +9,7 @@ mod state;
 use axum::http::{HeaderValue, Method};
 use axum::routing::{get, post};
 use axum::Router;
+use clap::Parser;
 use inkly_search::IndexManager;
 use inkly_summarize::{Summarizer, SummarizerConfig};
 use routes::{
@@ -19,6 +21,8 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tracing::info;
+
+use crate::cli::{Cli, Commands};
 
 fn build_cors_layer(config: &config::Config) -> Result<CorsLayer, String> {
     if config.cors_permissive {
@@ -43,8 +47,30 @@ fn build_cors_layer(config: &config::Config) -> Result<CorsLayer, String> {
         .allow_headers(Any))
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    let cli = Cli::parse();
+    match cli.command.unwrap_or(Commands::Serve) {
+        Commands::Serve => {
+            tokio::runtime::Runtime::new()
+                .expect("tokio runtime")
+                .block_on(run_server());
+        }
+        Commands::SummaryBench {
+            text,
+            runs,
+            cpu,
+            hf_cache,
+        } => {
+            dotenvy::dotenv().ok();
+            if let Err(e) = cli::run_summary_bench(text, runs, cpu, hf_cache) {
+                eprintln!("summary-bench: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
+async fn run_server() {
     dotenvy::dotenv().ok();
 
     let config = match config::Config::from_env() {

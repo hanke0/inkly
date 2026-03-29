@@ -22,4 +22,7 @@ pub enum SummarizeError {
 
     #[error("missing special token {token:?} in tokenizer vocabulary")]
     MissingSpecialToken { token: String },
+
+    #[error("internal summarizer error")]
+    Internal,
 }

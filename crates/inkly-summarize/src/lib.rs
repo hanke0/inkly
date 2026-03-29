@@ -24,6 +24,7 @@ use hf_hub::{
     Repo, RepoType,
 };
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use tokenizers::Tokenizer;
 use tracing::instrument;
 
@@ -89,6 +90,40 @@ pub struct Summarizer {
     config: SummarizerConfig,
 }
 
+/// Timing breakdown for one [`Summarizer::summarize_benchmark`] run.
+#[derive(Debug, Clone)]
+pub struct SummarizeBenchmark {
+    /// Tokens in `token_ids` passed to the first forward (prompt).
+    pub prompt_tokens: usize,
+    /// Total predicted tokens including the first token from prefill.
+    pub generated_tokens: usize,
+    /// Tokens after the first prefill step (decode loop only).
+    pub decode_phase_tokens: usize,
+    pub prefill: Duration,
+    pub decode: Duration,
+}
+
+impl SummarizeBenchmark {
+    /// Decode-phase tokens per second (excludes prefill forward; typical “generation speed”).
+    pub fn decode_tokens_per_sec(&self) -> f64 {
+        let s = self.decode.as_secs_f64();
+        if s <= 0.0 {
+            return 0.0;
+        }
+        self.decode_phase_tokens as f64 / s
+    }
+
+    /// All `generated_tokens` over prefill + decode wall time.
+    pub fn overall_tokens_per_sec(&self) -> f64 {
+        let total = self.prefill + self.decode;
+        let s = total.as_secs_f64();
+        if s <= 0.0 {
+            return 0.0;
+        }
+        self.generated_tokens as f64 / s
+    }
+}
+
 impl Summarizer {
     /// Download (if needed) and load GGUF weights plus tokenizer.
     #[instrument(skip_all, fields(
@@ -129,6 +164,22 @@ impl Summarizer {
     /// Summarize `article` in the same language, targeting ~200 CJK characters or ~35–45 English words.
     #[instrument(skip_all, fields(article_len = article.len()))]
     pub fn summarize(&mut self, article: &str) -> Result<String, SummarizeError> {
+        Ok(self.summarize_internal(article, false)?.0)
+    }
+
+    /// Same as [`summarize`](Self::summarize) but returns timing for prompt (prefill) vs decode.
+    #[instrument(skip_all, fields(article_len = article.len()))]
+    pub fn summarize_benchmark(&mut self, article: &str) -> Result<(String, SummarizeBenchmark), SummarizeError> {
+        let (text, bench) = self.summarize_internal(article, true)?;
+        let bench = bench.ok_or(SummarizeError::Internal)?;
+        Ok((text, bench))
+    }
+
+    fn summarize_internal(
+        &mut self,
+        article: &str,
+        with_benchmark: bool,
+    ) -> Result<(String, Option<SummarizeBenchmark>), SummarizeError> {
         if article.trim().is_empty() {
             return Err(SummarizeError::EmptyArticle);
         }
@@ -143,6 +194,7 @@ impl Summarizer {
             .encode(prompt, true)
             .map_err(|e| SummarizeError::Tokenizer(e.to_string()))?;
         let token_ids = tokens.get_ids();
+        let prompt_tokens = token_ids.len();
 
         let sampling = build_sampling(
             self.config.temperature,
@@ -154,12 +206,14 @@ impl Summarizer {
 
         let mut all_tokens: Vec<u32> = Vec::new();
 
+        let prefill_start = Instant::now();
         let mut next_token = {
             let input = Tensor::new(token_ids, &self.device)?.unsqueeze(0)?;
             let logits = self.model.forward(&input, 0)?;
             let logits = logits.squeeze(0)?;
             logits_processor.sample(&logits)?
         };
+        let prefill = prefill_start.elapsed();
         all_tokens.push(next_token);
 
         let eos_id = eos_token_id(tos.tokenizer())?;
@@ -169,6 +223,7 @@ impl Summarizer {
             text.push_str(&t);
         }
 
+        let decode_start = Instant::now();
         let max_new = self.config.max_new_tokens;
         for index in 0..max_new {
             if next_token == eos_id {
@@ -200,11 +255,24 @@ impl Summarizer {
                 break;
             }
         }
+        let decode = decode_start.elapsed();
+
         if let Some(rest) = tos.decode_rest().map_err(SummarizeError::Candle)? {
             text.push_str(&rest);
         }
 
-        Ok(text.trim().to_string())
+        let generated_tokens = all_tokens.len();
+        let decode_phase_tokens = generated_tokens.saturating_sub(1);
+
+        let bench = with_benchmark.then_some(SummarizeBenchmark {
+            prompt_tokens,
+            generated_tokens,
+            decode_phase_tokens,
+            prefill,
+            decode,
+        });
+
+        Ok((text.trim().to_string(), bench))
     }
 }
 
