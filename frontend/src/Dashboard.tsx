@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { search } from "./api";
-import { BrandHeader } from "./components/BrandHeader";
+import { BrandHeader, DEFAULT_SEARCH_LIMIT } from "./components/BrandHeader";
 import { CatalogSidebar } from "./components/CatalogSidebar";
 import { NewDocumentModal } from "./components/NewDocumentModal";
 import { SearchResultsDialog } from "./components/SearchResultsDialog";
@@ -14,7 +14,7 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [q, setQ] = useState<string>("");
-  const [limit, setLimit] = useState<number>(10);
+  const [limit, setLimit] = useState<number>(DEFAULT_SEARCH_LIMIT);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -78,7 +78,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-full min-h-0 w-full max-w-full flex-col bg-inkly-shell text-inkly-ink md:flex-row">
       <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-b border-inkly-line bg-gradient-to-b from-inkly-sidebar to-inkly-sidebar-deep md:max-h-none md:w-[17.5rem] md:border-b-0 md:border-r md:shadow-[inset_-1px_0_0_rgba(196,189,176,0.45)]">
-        <div className="shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
+        <div className="relative z-20 shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
           <BrandHeader
             search={{
               q,

@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { fetchDocument, search } from "./api";
 import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
-import { BrandHeader } from "./components/BrandHeader";
+import { BrandHeader, DEFAULT_SEARCH_LIMIT } from "./components/BrandHeader";
 import { CatalogSidebar } from "./components/CatalogSidebar";
 import { DocumentBody } from "./components/DocumentBody";
 import { NewDocumentModal } from "./components/NewDocumentModal";
@@ -33,7 +33,7 @@ export default function DocumentView() {
   const [error, setError] = useState("");
 
   const [q, setQ] = useState("");
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(DEFAULT_SEARCH_LIMIT);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchErr, setSearchErr] = useState("");
   const [searchRes, setSearchRes] = useState<SearchResponse | null>(null);
@@ -108,7 +108,7 @@ export default function DocumentView() {
   return (
     <div className="flex h-full min-h-0 w-full max-w-full flex-col bg-inkly-shell text-inkly-ink md:flex-row">
       <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-b border-inkly-line bg-gradient-to-b from-inkly-sidebar to-inkly-sidebar-deep md:max-h-none md:w-[17.5rem] md:border-b-0 md:border-r md:shadow-[inset_-1px_0_0_rgba(196,189,176,0.45)]">
-        <div className="shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
+        <div className="relative z-20 shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
           <BrandHeader
             search={{
               q,
