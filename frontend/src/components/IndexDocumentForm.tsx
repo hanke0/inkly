@@ -40,6 +40,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          placeholder="Document title"
         />
       </div>
 
@@ -49,7 +50,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           <input
             ref={contentFileInputRef}
             type="file"
-            accept=".txt,.md,.markdown,text/plain,text/markdown"
+            accept=".txt,.md,.markdown,.html,.htm,text/plain,text/markdown,text/html"
             className="max-w-full text-xs text-inkly-muted file:mr-2 file:rounded file:border-0 file:bg-inkly-sidebar file:px-2 file:py-1 file:text-inkly-ink-soft"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -74,6 +75,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           disabled={Boolean(contentFile)}
+          placeholder="Paste or type document text, or choose a file above"
         />
       </div>
 
@@ -84,6 +86,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
             className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
             value={docUrl}
             onChange={(e) => setDocUrl(e.target.value)}
+            placeholder="https://example.com/article"
           />
         </div>
         <div>
@@ -92,6 +95,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
             className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
             value={path}
             onChange={(e) => setPath(e.target.value)}
+            placeholder="/ or /folder/"
           />
           <p className="mt-1 text-[11px] text-inkly-faint">
             Normalized to <span className="font-mono">/</span> or <span className="font-mono">/segment/.../</span>
@@ -105,6 +109,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           className="mt-1.5 w-full rounded-md border border-inkly-border bg-white px-3 py-2 text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
           value={tagsText}
           onChange={(e) => setTagsText(e.target.value)}
+          placeholder="comma, separated, tags"
         />
       </div>
 
@@ -114,6 +119,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           className="mt-1.5 h-20 w-full rounded-md border border-inkly-border bg-white px-3 py-2 font-mono text-sm text-inkly-ink shadow-sm outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent"
           value={note}
           onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional note"
         />
       </div>
 

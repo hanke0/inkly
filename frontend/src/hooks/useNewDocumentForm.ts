@@ -6,14 +6,14 @@ import type { DocumentIn, IndexResponse } from "../types";
 export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
-  const [title, setTitle] = useState("Hello");
-  const [content, setContent] = useState("This is a test document.");
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
   const [contentFile, setContentFile] = useState<File | null>(null);
   const contentFileInputRef = useRef<HTMLInputElement>(null);
-  const [docUrl, setDocUrl] = useState("https://example.com/doc/1");
-  const [tagsText, setTagsText] = useState("test,example");
-  const [path, setPath] = useState("/");
-  const [note, setNote] = useState("Optional note...");
+  const [docUrl, setDocUrl] = useState("");
+  const [tagsText, setTagsText] = useState("");
+  const [path, setPath] = useState("");
+  const [note, setNote] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
@@ -56,7 +56,7 @@ export function useNewDocumentForm(onSuccess: (res: IndexResponse) => void) {
         res = await indexDocumentUpload(fd);
       } else {
         if (!content.trim()) {
-          setFormError("Add content in the text area or choose a UTF-8 text file.");
+          setFormError("Add content in the text area or choose a UTF-8 text or HTML file.");
           setLoading(false);
           return;
         }

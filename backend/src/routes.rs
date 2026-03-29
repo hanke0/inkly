@@ -167,7 +167,7 @@ pub async fn index_document(
     }))
 }
 
-/// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`).
+/// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`), e.g. plain text, Markdown, or HTML.
 ///
 /// Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned), `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
 pub async fn index_document_upload(

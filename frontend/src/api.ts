@@ -71,7 +71,7 @@ export async function indexDocument(doc: DocumentIn): Promise<IndexResponse> {
   });
 }
 
-/** Multipart upload: field `file` (UTF-8 text) plus text fields matching the index form. */
+/** Multipart upload: field `file` (UTF-8 text or HTML) plus text fields matching the index form. */
 export async function indexDocumentUpload(formData: FormData): Promise<IndexResponse> {
   const headers = new Headers();
   applyBasicAuth(headers);
