@@ -2,15 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body {
+/**
+ * Lock the app to the initial containing block via percentages only (no viewport height units).
+ * Scrolling happens inside panes; modals use position: fixed.
+ */
+html {
   height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 body {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
   margin: 0;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 @layer components {
@@ -23,8 +44,7 @@ body {
   }
 
   .inkly-reading__title {
-    @apply font-inkly-read-ui font-semibold tracking-tight text-inkly-ink;
-    font-size: clamp(1.375rem, 1.1rem + 1.1vw, 1.875rem);
+    @apply font-inkly-read-ui text-xl font-semibold tracking-tight text-inkly-ink sm:text-2xl;
     line-height: 1.28;
   }
 
@@ -145,7 +165,7 @@ body {
   }
 
   .inkly-reading__body--rich img {
-    @apply my-3 max-h-[min(70vh,32rem)] max-w-full rounded-md border border-inkly-border;
+    @apply my-3 max-h-[32rem] max-w-full rounded-md border border-inkly-border;
   }
 
   .inkly-reading__body--rich video {
@@ -166,15 +186,21 @@ body {
     max-width: 100%;
   }
 
-  /** Sandboxed HTML document view */
+  /** Sandboxed HTML document view — fills remaining height in flex column (DocumentView) */
+  .inkly-reading__iframe-root {
+    min-height: 0;
+    min-width: 0;
+  }
+
   .inkly-reading__iframe-shell {
     @apply overflow-hidden rounded-md border border-inkly-border bg-white shadow-sm;
+    min-height: 12rem;
+    min-width: 0;
   }
 
   .inkly-reading__iframe {
-    @apply block w-full border-0 bg-white;
-    height: min(75vh, 56rem);
-    min-height: 280px;
+    min-height: 0;
+    overflow: auto;
   }
 
   .inkly-reading__note {

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
-import { clearStoredCredentials, search } from "./api";
+import { search } from "./api";
 import { BrandHeader } from "./components/BrandHeader";
 import { CatalogSidebar } from "./components/CatalogSidebar";
 import { NewDocumentModal } from "./components/NewDocumentModal";
@@ -11,7 +11,6 @@ import { useNewDocumentForm } from "./hooks/useNewDocumentForm";
 import type { SearchQuery, SearchResponse } from "./types";
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [q, setQ] = useState<string>("");
@@ -37,11 +36,6 @@ export default function Dashboard() {
         : "Indexed successfully.",
     );
   });
-
-  function logout() {
-    clearStoredCredentials();
-    navigate("/login", { replace: true });
-  }
 
   const docLink = (docIdNum: number, folderPath: string) =>
     `/doc/${docIdNum}?path=${encodeURIComponent(folderPath)}`;
@@ -82,55 +76,53 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-inkly-shell text-inkly-ink">
-      <BrandHeader
-        onSignOut={logout}
-        onNewDocument={openNewDocumentModal}
-        search={{
-          q,
-          onQChange: setQ,
-          limit,
-          onLimitChange: setLimit,
-          onSearch: () => {
-            void runSearch();
-          },
-          loading,
-        }}
-      />
+    <div className="flex h-full min-h-0 w-full max-w-full flex-col bg-inkly-shell text-inkly-ink md:flex-row">
+      <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-b border-inkly-line bg-gradient-to-b from-inkly-sidebar to-inkly-sidebar-deep md:max-h-none md:w-[17.5rem] md:border-b-0 md:border-r md:shadow-[inset_-1px_0_0_rgba(196,189,176,0.45)]">
+        <div className="shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
+          <BrandHeader
+            search={{
+              q,
+              onQChange: setQ,
+              limit,
+              onLimitChange: setLimit,
+              onSearch: () => {
+                void runSearch();
+              },
+              loading,
+            }}
+          />
+          {actionStatus ? (
+            <p className="mt-2 rounded-md bg-white/25 px-2 py-1 text-[11px] leading-snug text-inkly-muted">
+              {actionStatus}
+            </p>
+          ) : null}
+          {error ? (
+            <div className="mt-2 rounded-md border border-red-200/90 bg-red-50/95 px-2 py-1.5 text-[11px] leading-snug text-red-800">
+              {error}
+            </div>
+          ) : null}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 md:px-4">
+          <CatalogSidebar
+            catalog={catalog}
+            catalogLoading={catalogLoading}
+            catalogErr={catalogErr}
+            onPathChange={setCatalogPath}
+            docLink={docLink}
+            onNewDocument={openNewDocumentModal}
+          />
+        </div>
+      </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="flex max-h-[38vh] shrink-0 flex-col overflow-hidden border-b border-inkly-line bg-inkly-sidebar md:max-h-none md:w-72 md:border-b-0 md:border-r">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-5">
-            <CatalogSidebar
-              catalog={catalog}
-              catalogLoading={catalogLoading}
-              catalogErr={catalogErr}
-              onPathChange={setCatalogPath}
-              docLink={docLink}
-            />
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper">
-          <div className="shrink-0 border-b border-inkly-border-soft bg-inkly-paper px-5 py-2 md:px-8">
-            {actionStatus ? <span className="text-xs text-inkly-muted">{actionStatus}</span> : null}
-          </div>
-
-          <div className="flex-1 overflow-y-auto bg-inkly-paper px-5 py-6 md:px-8">
-            {error ? (
-              <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                {error}
-              </div>
-            ) : null}
-
-            {!error ? (
-              <p className="text-sm leading-relaxed text-inkly-muted">
-                Open a page from the catalog on the left, or search from the header. Use <span className="font-medium text-inkly-ink-soft">New</span> to add a document.
-              </p>
-            ) : null}
-          </div>
-        </main>
-      </div>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 md:px-8 md:py-6">
+          {!error ? (
+            <p className="text-sm leading-relaxed text-inkly-muted">
+              Pick a page in the library or search above.
+            </p>
+          ) : null}
+        </div>
+      </main>
 
       <SearchResultsDialog
         open={searchResultsOpen}

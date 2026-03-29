@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { clearStoredCredentials, fetchDocument, search } from "./api";
+import { fetchDocument, search } from "./api";
+import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
 import { BrandHeader } from "./components/BrandHeader";
 import { CatalogSidebar } from "./components/CatalogSidebar";
 import { DocumentBody } from "./components/DocumentBody";
@@ -70,11 +71,6 @@ export default function DocumentView() {
     };
   }, [docId]);
 
-  function logout() {
-    clearStoredCredentials();
-    navigate("/login", { replace: true });
-  }
-
   const docLink = (docIdNum: number, folderPath: string) =>
     `/doc/${docIdNum}?path=${encodeURIComponent(folderPath)}`;
 
@@ -107,105 +103,114 @@ export default function DocumentView() {
     }
   }
 
+  const htmlReading = doc != null && looksLikeHtml(firstLineProbe(doc.content));
+
   return (
-    <div className="flex min-h-screen flex-col bg-inkly-shell text-inkly-ink">
-      <BrandHeader
-        onSignOut={logout}
-        onNewDocument={openNewDocumentModal}
-        search={{
-          q,
-          onQChange: setQ,
-          limit,
-          onLimitChange: setLimit,
-          onSearch: () => {
-            void runSearch();
-          },
-          loading: searchLoading,
-        }}
-      />
+    <div className="flex h-full min-h-0 w-full max-w-full flex-col bg-inkly-shell text-inkly-ink md:flex-row">
+      <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-b border-inkly-line bg-gradient-to-b from-inkly-sidebar to-inkly-sidebar-deep md:max-h-none md:w-[17.5rem] md:border-b-0 md:border-r md:shadow-[inset_-1px_0_0_rgba(196,189,176,0.45)]">
+        <div className="shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
+          <BrandHeader
+            search={{
+              q,
+              onQChange: setQ,
+              limit,
+              onLimitChange: setLimit,
+              onSearch: () => {
+                void runSearch();
+              },
+              loading: searchLoading,
+            }}
+          />
+          {searchErr ? (
+            <div className="mt-2 rounded-md border border-red-200/90 bg-red-50/95 px-2 py-1.5 text-[11px] leading-snug text-red-800">
+              {searchErr}
+            </div>
+          ) : null}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 md:px-4">
+          <CatalogSidebar
+            catalog={catalog}
+            catalogLoading={catalogLoading}
+            catalogErr={catalogErr}
+            onPathChange={onCatalogPathChange}
+            docLink={docLink}
+            onNewDocument={openNewDocumentModal}
+          />
+        </div>
+      </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="flex max-h-[38vh] shrink-0 flex-col overflow-hidden border-b border-inkly-line bg-inkly-sidebar md:max-h-none md:w-72 md:border-b-0 md:border-r">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-5">
-            <CatalogSidebar
-              catalog={catalog}
-              catalogLoading={catalogLoading}
-              catalogErr={catalogErr}
-              onPathChange={onCatalogPathChange}
-              docLink={docLink}
-            />
-          </div>
-        </aside>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-inkly-paper">
+        <div
+          className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-inkly-paper px-4 pb-3 pt-4 md:px-8 md:pb-4 md:pt-5 ${
+            htmlReading ? "flex min-h-0 flex-col" : ""
+          }`}
+        >
+          {error ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+            </div>
+          ) : null}
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper">
-          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-inkly-paper px-5 py-6 md:px-8">
-            {searchErr ? (
-              <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                {searchErr}
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                {error}
-              </div>
-            ) : null}
-
-            {loading ? (
-              <p className="text-sm text-inkly-muted">Loading…</p>
-            ) : doc ? (
-              <article className="inkly-reading min-w-0 max-w-full pb-8">
-                <h1 className="inkly-reading__title">{doc.title}</h1>
-                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0 text-[11px] leading-tight text-inkly-muted">
-                  <span className="min-w-0 truncate font-mono" title={doc.path}>
-                    {doc.path}
-                  </span>
-                  {doc.tags.length > 0 ? (
-                    <>
-                      <span className="shrink-0 text-inkly-line" aria-hidden>
-                        ·
-                      </span>
-                      <span className="min-w-0 truncate font-mono" title={doc.tags.join(", ")}>
-                        {doc.tags.join(", ")}
-                      </span>
-                    </>
-                  ) : null}
-                  {doc.doc_url ? (
-                    <>
-                      <span className="shrink-0 text-inkly-line" aria-hidden>
-                        ·
-                      </span>
-                      <a
-                        href={doc.doc_url}
-                        className="min-w-0 max-w-full truncate font-mono text-inkly-link hover:text-inkly-link-hover hover:underline"
-                        title={doc.doc_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {doc.doc_url}
-                      </a>
-                    </>
-                  ) : null}
-                </div>
-                {doc.note ? (
-                  <details className="mt-3 group">
-                    <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
-                      <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
-                        Note
-                      </span>
-                      <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
-                    </summary>
-                    <div className="inkly-reading__note mt-2 border-l-2 border-inkly-line pl-3">
-                      {doc.note}
-                    </div>
-                  </details>
+          {loading ? (
+            <p className="text-sm text-inkly-muted">Loading…</p>
+          ) : doc ? (
+            <article
+              className={
+                htmlReading
+                  ? "inkly-reading flex min-h-full min-w-0 max-w-full flex-col pb-2 md:pb-3"
+                  : "inkly-reading min-w-0 max-w-full pb-2 md:pb-3"
+              }
+            >
+              <h1 className="inkly-reading__title shrink-0">{doc.title}</h1>
+              <div className="mt-2 flex min-w-0 shrink-0 flex-wrap items-center gap-x-1 gap-y-0 text-[11px] leading-tight text-inkly-muted">
+                <span className="min-w-0 truncate font-mono" title={doc.path}>
+                  {doc.path}
+                </span>
+                {doc.tags.length > 0 ? (
+                  <>
+                    <span className="shrink-0 text-inkly-line" aria-hidden>
+                      ·
+                    </span>
+                    <span className="min-w-0 truncate font-mono" title={doc.tags.join(", ")}>
+                      {doc.tags.join(", ")}
+                    </span>
+                  </>
                 ) : null}
-                <DocumentBody content={doc.content} />
-              </article>
-            ) : null}
-          </div>
-        </main>
-      </div>
+                {doc.doc_url ? (
+                  <>
+                    <span className="shrink-0 text-inkly-line" aria-hidden>
+                      ·
+                    </span>
+                    <a
+                      href={doc.doc_url}
+                      className="min-w-0 max-w-full truncate font-mono text-inkly-link hover:text-inkly-link-hover hover:underline"
+                      title={doc.doc_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {doc.doc_url}
+                    </a>
+                  </>
+                ) : null}
+              </div>
+              {doc.note ? (
+                <details className="mt-3 shrink-0 group">
+                  <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
+                    <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
+                      Note
+                    </span>
+                    <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
+                  </summary>
+                  <div className="inkly-reading__note mt-2 border-l-2 border-inkly-line pl-3">
+                    {doc.note}
+                  </div>
+                </details>
+              ) : null}
+              <DocumentBody content={doc.content} />
+            </article>
+          ) : null}
+        </div>
+      </main>
 
       <SearchResultsDialog
         open={searchResultsOpen}

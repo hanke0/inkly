@@ -68,15 +68,15 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-inkly-shell text-inkly-muted">
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-y-auto bg-inkly-shell text-inkly-muted">
         <div className="text-sm">Checking sign-in…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-inkly-shell text-inkly-ink">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-12">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-inkly-shell text-inkly-ink">
+      <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col justify-center px-4 py-8">
         <div className="mb-8 text-center">
           <h1 className="font-serif text-3xl font-medium tracking-tight text-inkly-ink">Inkly</h1>
           <p className="mt-2 text-sm leading-relaxed text-inkly-muted">
