@@ -62,17 +62,17 @@ pub struct SummarizerConfig {
 impl Default for SummarizerConfig {
     fn default() -> Self {
         Self {
-            tokenizer_repo: "Qwen/Qwen3-1.7B".to_string(),
-            gguf_repo: "unsloth/Qwen3-1.7B-GGUF".to_string(),
+            tokenizer_repo: "Qwen/Qwen3-0.6B".to_string(),
+            gguf_repo: "unsloth/Qwen3-0.6B-GGUF".to_string(),
             gguf_revision: "main".to_string(),
-            gguf_filename: "Qwen3-1.7B-Q4_K_M.gguf".to_string(),
+            gguf_filename: "Qwen3-0.6B-Q8_0.gguf".to_string(),
             gguf_path: None,
             tokenizer_path: None,
             hf_hub_cache_dir: None,
             prefer_gpu: true,
             max_article_chars: 12_000,
             max_new_tokens: 512,
-            temperature: 0.35,
+            temperature: 0.0,
             top_p: Some(0.9),
             top_k: None,
             repeat_penalty: 1.12,
