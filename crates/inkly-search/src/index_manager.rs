@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
+use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, RegexQuery, TermQuery};
 use tantivy::schema::{
     Field, IndexRecordOption, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
     Value,
@@ -403,10 +403,16 @@ impl IndexManager {
         tenant_id: &str,
         query_str: &str,
         limit: u32,
+        path_prefix: Option<&str>,
+        required_tags: &[String],
     ) -> Result<(u64, Vec<SearchResultItem>)> {
         let query_str = query_str.trim();
-        if query_str.is_empty() {
-            return Err(SearchError::InvalidInput("q is empty".into()));
+        let has_path = path_prefix.is_some_and(|p| !p.is_empty() && p != "/");
+        let has_tags = !required_tags.is_empty();
+        if query_str.is_empty() && !has_path && !has_tags {
+            return Err(SearchError::InvalidInput(
+                "empty query: provide q and/or path and/or tags".into(),
+            ));
         }
 
         let limit = limit.clamp(1, 50) as usize;
@@ -416,11 +422,37 @@ impl IndexManager {
         let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
         let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
 
-        let parser =
-            QueryParser::for_index(&self.index, vec![self.title_field, self.content_field, self.note_field]);
-        let full_query = parser.parse_query(query_str)?;
+        let full_query: Box<dyn Query> = if query_str.is_empty() {
+            Box::new(AllQuery)
+        } else {
+            let parser = QueryParser::for_index(
+                &self.index,
+                vec![self.title_field, self.content_field, self.note_field],
+            );
+            parser.parse_query(query_str)?
+        };
 
-        let query = BooleanQuery::new(vec![(Occur::Must, Box::new(tenant_query)), (Occur::Must, full_query)]);
+        let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![
+            (Occur::Must, Box::new(tenant_query)),
+            (Occur::Must, full_query),
+        ];
+
+        if let Some(prefix) = path_prefix.filter(|p| !p.is_empty() && *p != "/") {
+            // Tantivy FST regex does not accept a leading `^`; match full path terms by prefix + remainder.
+            let pattern = format!("{}.*", regex::escape(prefix));
+            let path_query = RegexQuery::from_pattern(&pattern, self.path_field)?;
+            clauses.push((Occur::Must, Box::new(path_query)));
+        }
+
+        for tag in required_tags {
+            let term = Term::from_field_text(self.tags_field, tag);
+            clauses.push((
+                Occur::Must,
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic)),
+            ));
+        }
+
+        let query = BooleanQuery::new(clauses);
 
         let top_docs = TopDocs::with_limit(limit);
         let total_hits = query.count(&searcher)? as u64;
@@ -614,6 +646,71 @@ impl IndexManager {
 #[cfg(test)]
 mod tests {
     use super::direct_subdir_under;
+    use super::IndexManager;
+    use tempfile::tempdir;
+
+    #[test]
+    fn search_filters_by_path_prefix_and_tags() {
+        let dir = tempdir().expect("tempdir");
+        let im = IndexManager::open_or_create(dir.path()).expect("open");
+        let tenant = "t_search_filters";
+        im.index_document(
+            tenant,
+            1,
+            "Alpha",
+            "body one",
+            "",
+            &["rust".to_string()],
+            "/proj/",
+            "",
+        )
+        .expect("idx1");
+        im.index_document(
+            tenant,
+            2,
+            "Beta",
+            "body two",
+            "",
+            &["rust".to_string(), "cli".to_string()],
+            "/proj/sub/",
+            "",
+        )
+        .expect("idx2");
+        im.index_document(
+            tenant,
+            3,
+            "Gamma",
+            "body three",
+            "",
+            &[],
+            "/other/",
+            "",
+        )
+        .expect("idx3");
+
+        let (n, hits) = im
+            .search(tenant, "body", 10, Some("/proj/"), &[])
+            .expect("search path");
+        assert_eq!(n, 2);
+        assert_eq!(hits.len(), 2);
+
+        let (_, hits2) = im
+            .search(tenant, "", 10, Some("/proj/"), &["rust".to_string()])
+            .expect("search tag+path");
+        assert_eq!(hits2.len(), 2);
+
+        let (_, hits3) = im
+            .search(
+                tenant,
+                "",
+                10,
+                None,
+                &["rust".to_string(), "cli".to_string()],
+            )
+            .expect("search tags and");
+        assert_eq!(hits3.len(), 1);
+        assert_eq!(hits3[0].doc_id, 2);
+    }
 
     #[test]
     fn direct_subdir_from_root() {

@@ -384,6 +384,8 @@ pub async fn index_documents_bulk(
     }))
 }
 
+const MAX_SEARCH_TAG_FILTERS: usize = 20;
+
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
@@ -394,17 +396,63 @@ pub async fn search(
     let limit = query.limit;
     let index = state.index.clone();
 
+    let path_filter = match query.path.as_deref() {
+        None | Some("") => None,
+        Some(p) => Some(normalize_dir_path(p)?),
+    };
+    let path_filter = path_filter.filter(|p| p != "/");
+
+    let tag_filters: Vec<String> = query
+        .tags
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if tag_filters.len() > MAX_SEARCH_TAG_FILTERS {
+        return Err(ApiError::bad_request("too many tag filters"));
+    }
+    for t in &tag_filters {
+        validate_tag_format(t)?;
+    }
+
+    let q_trimmed = q.trim().to_string();
+    if q_trimmed.is_empty() && path_filter.is_none() && tag_filters.is_empty() {
+        return Err(ApiError::bad_request("search text or folder/tag filters required"));
+    }
+
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
-        query = %q,
+        query = %q_trimmed,
         limit = limit,
+        path = ?path_filter,
+        tag_filters = ?tag_filters,
         "search"
     );
 
-    let (total_hits, items) = tokio::task::spawn_blocking(move || index.search(&tenant_id, &q, limit))
-        .await
-        .map_err(|_| ApiError::Internal)??;
+    let path_owned = path_filter.clone();
+    let tags_owned = tag_filters.clone();
+
+    let (total_hits, items) = tokio::task::spawn_blocking(move || {
+        index.search(
+            &tenant_id,
+            &q_trimmed,
+            limit,
+            path_owned.as_deref(),
+            &tags_owned,
+        )
+    })
+    .await
+    .map_err(|_| ApiError::Internal)?
+    .map_err(|e| match e {
+        SearchError::InvalidInput(msg) => ApiError::bad_request(msg),
+        _ => ApiError::Internal,
+    })?;
 
     let results = items
         .into_iter()

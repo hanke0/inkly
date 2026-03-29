@@ -25,6 +25,10 @@ export type IndexResponse = {
 export type SearchQuery = {
   q: string;
   limit: number;
+  /** Normalized folder path; subtree filter (this folder and below). */
+  path?: string;
+  /** Comma-separated tags (document must have every tag). */
+  tags?: string;
 };
 
 export type SearchResult = {

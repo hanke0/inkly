@@ -34,6 +34,9 @@ export default function DocumentView() {
 
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(DEFAULT_SEARCH_LIMIT);
+  const [limitToFolder, setLimitToFolder] = useState(true);
+  const [tagsFilter, setTagsFilter] = useState("");
+  const [searchSummary, setSearchSummary] = useState<string | undefined>(undefined);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchErr, setSearchErr] = useState("");
   const [searchRes, setSearchRes] = useState<SearchResponse | null>(null);
@@ -88,10 +91,38 @@ export default function DocumentView() {
     setSearchRes(null);
     setSearchResultsOpen(false);
     setSearchLoading(true);
+    const trimmed = q.trim();
+    const tagParts = tagsFilter
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const usePath = limitToFolder && returnPath !== "/";
+    if (!trimmed && !usePath && tagParts.length === 0) {
+      setSearchLoading(false);
+      setSearchErr("Enter keywords, tags (in settings), or limit to the current folder.");
+      return;
+    }
     const query: SearchQuery = {
-      q: q.trim(),
+      q: trimmed,
       limit: Math.max(1, Math.min(50, limit)),
     };
+    if (usePath) {
+      query.path = returnPath;
+    }
+    if (tagParts.length > 0) {
+      query.tags = tagParts.join(",");
+    }
+    const summaryParts: string[] = [];
+    if (trimmed) {
+      summaryParts.push(trimmed);
+    }
+    if (usePath) {
+      summaryParts.push(`in ${returnPath}`);
+    }
+    if (tagParts.length > 0) {
+      summaryParts.push(`tags: ${tagParts.join(", ")}`);
+    }
+    setSearchSummary(summaryParts.length > 0 ? summaryParts.join(" · ") : undefined);
     try {
       const res = await search(query);
       setSearchRes(res);
@@ -119,6 +150,11 @@ export default function DocumentView() {
                 void runSearch();
               },
               loading: searchLoading,
+              catalogPath: returnPath,
+              limitToFolder,
+              onLimitToFolderChange: setLimitToFolder,
+              tagsFilter,
+              onTagsFilterChange: setTagsFilter,
             }}
           />
           {searchErr ? (
@@ -217,7 +253,7 @@ export default function DocumentView() {
         onClose={() => setSearchResultsOpen(false)}
         response={searchRes}
         docLink={docLink}
-        queryHint={q.trim() || undefined}
+        queryHint={searchSummary}
       />
 
       <NewDocumentModal

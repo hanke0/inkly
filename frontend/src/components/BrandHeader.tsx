@@ -12,6 +12,14 @@ export type BrandHeaderSearchProps = {
   /** Called on Enter in the query field (form submit). */
   onSearch: () => void;
   loading?: boolean;
+  /** Catalog folder from the URL (`/` or `/a/b/`). */
+  catalogPath?: string;
+  /** When true and `catalogPath` is not `/`, searches are scoped to that folder subtree. */
+  limitToFolder?: boolean;
+  onLimitToFolderChange?: (v: boolean) => void;
+  /** Comma-separated tags; documents must contain every tag. */
+  tagsFilter?: string;
+  onTagsFilterChange?: (v: string) => void;
 };
 
 type BrandHeaderProps = {
@@ -60,6 +68,20 @@ function isDefaultSearchLimit(limit: number): boolean {
   return Number.isFinite(limit) && limit === DEFAULT_SEARCH_LIMIT;
 }
 
+function searchSettingsDirty(search: BrandHeaderSearchProps): boolean {
+  if (!isDefaultSearchLimit(search.limit)) {
+    return true;
+  }
+  if (search.tagsFilter?.trim()) {
+    return true;
+  }
+  const path = search.catalogPath ?? "/";
+  if (path !== "/" && search.limitToFolder === false) {
+    return true;
+  }
+  return false;
+}
+
 /** Left rail: title and search. */
 export function BrandHeader({ search }: BrandHeaderProps) {
   const inputId = useId();
@@ -67,7 +89,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
   const optionsTriggerRef = useRef<HTMLButtonElement>(null);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
 
-  const settingsDirty = search ? !isDefaultSearchLimit(search.limit) : false;
+  const settingsDirty = search ? searchSettingsDirty(search) : false;
 
   useEffect(() => {
     if (!optionsOpen) {
@@ -101,6 +123,11 @@ export function BrandHeader({ search }: BrandHeaderProps) {
       return;
     }
     search.onLimitChange(DEFAULT_SEARCH_LIMIT);
+    search.onTagsFilterChange?.("");
+    const path = search.catalogPath ?? "/";
+    if (path !== "/") {
+      search.onLimitToFolderChange?.(true);
+    }
   }
 
   return (
@@ -188,7 +215,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
             {optionsOpen ? (
               <div
                 ref={optionsPanelRef}
-                className="absolute right-0 top-[calc(100%+4px)] z-40 w-44 rounded-lg border border-inkly-border bg-inkly-paper p-2.5 shadow-md"
+                className="absolute right-0 top-[calc(100%+4px)] z-40 w-52 rounded-lg border border-inkly-border bg-inkly-paper p-2.5 shadow-md"
                 role="dialog"
                 aria-label="Search settings"
               >
@@ -212,6 +239,46 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                     }
                   }}
                 />
+                <label
+                  htmlFor={`${inputId}-tags`}
+                  className="mt-2.5 block text-[10px] font-semibold uppercase tracking-wide text-inkly-muted"
+                >
+                  Tags (all required)
+                </label>
+                <input
+                  id={`${inputId}-tags`}
+                  type="text"
+                  autoComplete="off"
+                  placeholder="e.g. rust, notes"
+                  className="mt-1 w-full rounded border border-inkly-border bg-white px-1.5 py-1 text-xs text-inkly-ink outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent/25"
+                  value={search.tagsFilter ?? ""}
+                  onChange={(e) => search.onTagsFilterChange?.(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                    }
+                  }}
+                />
+                {search.catalogPath != null && search.catalogPath !== "/" ? (
+                  <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-[11px] text-inkly-ink">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-inkly-border text-inkly-accent focus:ring-inkly-accent/30"
+                      checked={search.limitToFolder !== false}
+                      onChange={(e) => search.onLimitToFolderChange?.(e.target.checked)}
+                    />
+                    <span className="min-w-0 leading-snug">
+                      Limit to{" "}
+                      <span className="font-mono text-[10px] text-inkly-muted" title={search.catalogPath}>
+                        {search.catalogPath}
+                      </span>
+                    </span>
+                  </label>
+                ) : (
+                  <p className="mt-2.5 text-[10px] leading-snug text-inkly-faint">
+                    Open a folder to scope search by path.
+                  </p>
+                )}
                 <button
                   type="button"
                   className="mt-2.5 w-full border-0 bg-transparent p-0 text-left text-[11px] text-inkly-link underline-offset-2 transition-colors hover:text-inkly-link-hover hover:underline disabled:cursor-default disabled:text-inkly-faint disabled:no-underline"

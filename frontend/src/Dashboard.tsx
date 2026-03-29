@@ -15,6 +15,9 @@ export default function Dashboard() {
 
   const [q, setQ] = useState<string>("");
   const [limit, setLimit] = useState<number>(DEFAULT_SEARCH_LIMIT);
+  const [limitToFolder, setLimitToFolder] = useState(true);
+  const [tagsFilter, setTagsFilter] = useState("");
+  const [searchSummary, setSearchSummary] = useState<string | undefined>(undefined);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -57,10 +60,40 @@ export default function Dashboard() {
     setSearchResultsOpen(false);
     setLoading(true);
 
+    const trimmed = q.trim();
+    const tagParts = tagsFilter
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const usePath = limitToFolder && catalogUrlPath !== "/";
+    if (!trimmed && !usePath && tagParts.length === 0) {
+      setLoading(false);
+      setError("Enter keywords, tags (in settings), or limit to the current folder.");
+      return;
+    }
+
     const query: SearchQuery = {
-      q: q.trim(),
+      q: trimmed,
       limit: Math.max(1, Math.min(50, limit)),
     };
+    if (usePath) {
+      query.path = catalogUrlPath;
+    }
+    if (tagParts.length > 0) {
+      query.tags = tagParts.join(",");
+    }
+
+    const summaryParts: string[] = [];
+    if (trimmed) {
+      summaryParts.push(trimmed);
+    }
+    if (usePath) {
+      summaryParts.push(`in ${catalogUrlPath}`);
+    }
+    if (tagParts.length > 0) {
+      summaryParts.push(`tags: ${tagParts.join(", ")}`);
+    }
+    setSearchSummary(summaryParts.length > 0 ? summaryParts.join(" · ") : undefined);
 
     try {
       const res = await search(query);
@@ -89,6 +122,11 @@ export default function Dashboard() {
                 void runSearch();
               },
               loading,
+              catalogPath: catalogUrlPath,
+              limitToFolder,
+              onLimitToFolderChange: setLimitToFolder,
+              tagsFilter,
+              onTagsFilterChange: setTagsFilter,
             }}
           />
           {actionStatus ? (
@@ -129,7 +167,7 @@ export default function Dashboard() {
         onClose={() => setSearchResultsOpen(false)}
         response={searchRes}
         docLink={docLink}
-        queryHint={q.trim() || undefined}
+        queryHint={searchSummary}
       />
 
       <NewDocumentModal

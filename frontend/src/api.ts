@@ -107,6 +107,12 @@ export async function search(query: SearchQuery): Promise<SearchResponse> {
     q: query.q,
     limit: String(query.limit),
   });
+  if (query.path != null && query.path !== "" && query.path !== "/") {
+    params.set("path", query.path);
+  }
+  if (query.tags != null && query.tags.trim() !== "") {
+    params.set("tags", query.tags.trim());
+  }
   return apiFetch<SearchResponse>(`/v1/search?${params.toString()}`, {
     method: "GET",
   });

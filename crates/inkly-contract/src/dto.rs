@@ -33,9 +33,17 @@ pub struct IndexResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchQuery {
+    /// Full-text query over title, content, and note. May be empty when `path` or `tags` filters are set.
+    #[serde(default)]
     pub q: String,
     #[serde(default = "default_limit")]
     pub limit: u32,
+    /// Normalized folder path (`/` or `/a/b/`). When not `/`, only documents in this folder or subfolders match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Comma-separated tags; the document must contain every tag (AND).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
