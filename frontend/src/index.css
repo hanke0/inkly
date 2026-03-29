@@ -34,6 +34,59 @@ body {
   flex-direction: column;
 }
 
+@layer base {
+  /**
+   * Overlay-style scrollbars: thumb only, no track fill (Firefox + WebKit).
+   */
+  :root {
+    --inkly-scroll-track: transparent;
+    --inkly-scroll-thumb: #c4bdb0;
+    --inkly-scroll-thumb-hover: #a8a08f;
+    --inkly-scroll-thumb-active: #8a8478;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--inkly-scroll-thumb) var(--inkly-scroll-track);
+  }
+
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--inkly-scroll-track);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--inkly-scroll-thumb);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--inkly-scroll-thumb-hover);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--inkly-scroll-thumb-active);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: var(--inkly-scroll-track);
+  }
+
+  /* No stepper arrows at scrollbar ends (Chromium / WebKit on some platforms). */
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
 @layer components {
   /**
    * Long-form reading: serif body + UI sans title.

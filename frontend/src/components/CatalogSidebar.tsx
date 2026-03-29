@@ -147,7 +147,7 @@ export function CatalogSidebar({
                       to={docLink(f.doc_id, catalog.path)}
                       className={
                         active
-                          ? "block truncate rounded px-1 py-0.5 text-xs font-medium text-inkly-ink ring-1 ring-inkly-accent/25 bg-white/50"
+                          ? "block truncate rounded px-1 py-0.5 text-xs font-medium text-inkly-ink bg-white/55"
                           : "block truncate rounded px-1 py-0.5 text-xs text-inkly-link hover:bg-white/40 hover:text-inkly-link-hover"
                       }
                       title={f.title}
