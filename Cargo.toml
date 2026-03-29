@@ -4,5 +4,6 @@ members = [
   "backend",
   "crates/inkly-contract",
   "crates/inkly-search",
+  "crates/inkly-summarize",
 ]
 
