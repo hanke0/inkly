@@ -1,0 +1,35 @@
+FROM rust:1-bookworm
+
+# Install Intel MKL dependencies manually
+# The following apt commands are for Debian-based images (like 'buster' or 'ubuntu')
+# You may need to follow Intel's official guide for other distributions
+# Source: https://www.intel.com
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget gnupg
+RUN wget -O- https://apt.repos.intel.com \
+    | gpg --dearmor | tee /usr/share/keyrings/intel-oneapi-archive-keyring.gpg > /dev/null
+
+RUN echo "deb [signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com all main" \
+    | tee /etc/apt/sources.list.d/intel-oneapi.list
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    intel-oneapi-mkl-devel
+
+# Set environment variables for MKL
+ENV LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:${LD_LIBRARY_PATH}
+
+WORKDIR /app
+
+# Copy your Cargo.toml and Cargo.lock files first to leverage Docker's build cache
+COPY Cargo.toml Cargo.lock ./
+
+# A dummy build step to cache dependencies
+RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+    cargo build --release
+RUN rm -rf src
+
+# Copy the rest of your source code
+COPY . .
+
+# Build your application with the "mkl" feature enabled
+# This will link against the MKL libraries installed in the container
+RUN cargo build --release --features "mkl"
