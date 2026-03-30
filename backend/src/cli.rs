@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use inkly_summarize::{Summarizer, SummarizerConfig};
+use inkly_summarize::{Summarizer, SummarizerConfig, INTERNAL_MAX_NEW_TOKENS};
 
 const DEFAULT_BENCH_TEXT: &str = "\
 Large language models are used for summarization, question answering, and many other text tasks. \
@@ -27,9 +27,6 @@ pub enum Commands {
         /// Cap article length (Unicode chars); prefill cost scales roughly with the square of token count on CPU.
         #[arg(long)]
         max_article_chars: Option<usize>,
-        /// Max tokens generated after prefill (lower = faster decode).
-        #[arg(long)]
-        max_new_tokens: Option<usize>,
         /// Number of timed runs (default 1).
         #[arg(long, default_value_t = 1)]
         runs: u32,
@@ -51,7 +48,6 @@ pub fn data_dir() -> PathBuf {
 pub fn run_summary_bench(
     text: Option<String>,
     max_article_chars: Option<usize>,
-    max_new_tokens: Option<usize>,
     runs: u32,
     cpu: bool,
     hf_cache: Option<PathBuf>,
@@ -68,13 +64,11 @@ pub fn run_summary_bench(
     if let Some(n) = max_article_chars {
         cfg.max_article_chars = n.max(256);
     }
-    if let Some(n) = max_new_tokens {
-        cfg.max_new_tokens = n.max(8);
-    }
 
     eprintln!(
         "Bench config: max_article_chars={} max_new_tokens={}",
-        cfg.max_article_chars, cfg.max_new_tokens
+        cfg.max_article_chars,
+        INTERNAL_MAX_NEW_TOKENS
     );
     eprintln!("Loading summarizer (first run may download weights)...");
     let mut summarizer = Summarizer::load(cfg).map_err(|e| e.to_string())?;

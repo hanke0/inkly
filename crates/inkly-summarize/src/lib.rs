@@ -39,6 +39,11 @@ use crate::device::pick_device;
 use crate::prompt::{build_user_message, format_chat_prompt};
 use crate::token_output_stream::TokenOutputStream;
 
+/// Hard cap on the number of tokens generated after prefill.
+///
+/// This is intentionally not configurable via API/CLI to keep decode latency bounded.
+pub const INTERNAL_MAX_NEW_TOKENS: usize = 1024;
+
 /// Configuration for model files, decoding, and safety limits.
 #[derive(Debug, Clone)]
 pub struct SummarizerConfig {
@@ -58,7 +63,6 @@ pub struct SummarizerConfig {
     pub prefer_gpu: bool,
     /// Hard cap on document characters (Unicode scalar count) fed to the model.
     pub max_article_chars: usize,
-    pub max_new_tokens: usize,
     pub temperature: f64,
     pub top_p: Option<f64>,
     pub top_k: Option<usize>,
@@ -81,8 +85,6 @@ impl Default for SummarizerConfig {
             prefer_gpu: true,
             // Prefill attention is O(L²) on CPU; 3k chars keeps quality while cutting time vs 6k.
             max_article_chars: 3_072,
-            // Short summary; smaller cap = faster decode on CPU.
-            max_new_tokens: 128,
             temperature: 0.0,
             top_p: None,
             top_k: None,
@@ -244,7 +246,7 @@ impl Summarizer {
         }
 
         let decode_start = Instant::now();
-        let max_new = self.config.max_new_tokens;
+        let max_new = INTERNAL_MAX_NEW_TOKENS;
         for index in 0..max_new {
             if next_token == eos_id {
                 break;
@@ -292,7 +294,7 @@ impl Summarizer {
             decode,
         });
 
-        Ok((text.trim().to_string(), bench))
+        Ok((strip_think_sections(&text), bench))
     }
 }
 
@@ -365,6 +367,25 @@ fn eos_token_id(tokenizer: &Tokenizer) -> Result<u32, SummarizeError> {
     })
 }
 
+fn strip_think_sections(text: &str) -> String {
+    let mut out = text.to_string();
+
+    // Some Qwen variants may still emit explicit reasoning blocks despite `/no_think`.
+    // Remove all complete `<think>...</think>` spans so persisted summaries stay clean.
+    loop {
+        let Some(start) = out.find("<think>") else {
+            break;
+        };
+        let Some(end_rel) = out[start..].find("</think>") else {
+            break;
+        };
+        let end = start + end_rel + "</think>".len();
+        out.replace_range(start..end, "");
+    }
+
+    out.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,5 +395,17 @@ mod tests {
         let (s, t) = clamp_chars("abcde", 3);
         assert!(t);
         assert_eq!(s, "abc");
+    }
+
+    #[test]
+    fn strip_think_sections_removes_reasoning_block() {
+        let got = strip_think_sections("<think>hidden steps</think>\nfinal answer");
+        assert_eq!(got, "final answer");
+    }
+
+    #[test]
+    fn strip_think_sections_keeps_plain_text() {
+        let got = strip_think_sections("plain summary");
+        assert_eq!(got, "plain summary");
     }
 }

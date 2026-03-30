@@ -58,7 +58,6 @@ fn main() {
         Commands::SummaryBench {
             text,
             max_article_chars,
-            max_new_tokens,
             runs,
             cpu,
             hf_cache,
@@ -67,7 +66,6 @@ fn main() {
             if let Err(e) = cli::run_summary_bench(
                 text,
                 max_article_chars,
-                max_new_tokens,
                 runs,
                 cpu,
                 hf_cache,
