@@ -17,7 +17,7 @@ Output:
     )
 }
 
-/// Qwen3 chat turn: disables “thinking” trace for cleaner summaries (`/no_think`).
+/// Qwen3.5 chat turn: disables “thinking” trace for cleaner summaries (`/no_think`).
 pub fn format_chat_prompt(user_message: &str) -> String {
     let im_start = concat!("<|", "im_start", "|>");
     let im_end = concat!("<|", "im_end", "|>");

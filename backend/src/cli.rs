@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use inkly_summarize::{Summarizer, SummarizerConfig, INTERNAL_MAX_NEW_TOKENS};
+use inkly_summarize::{ModelSize, Summarizer, SummarizerConfig, INTERNAL_MAX_NEW_TOKENS};
 
 const DEFAULT_BENCH_TEXT: &str = "\
 Large language models are used for summarization, question answering, and many other text tasks. \
@@ -24,6 +24,9 @@ pub enum Commands {
         /// Path to a file whose contents will be used as the article (default: built-in English sample).
         #[arg(long)]
         file: Option<PathBuf>,
+        /// Model parameter size: 0.8b (default), 2b, 4b, 9b, 27b, 35b, 122b.
+        #[arg(long, default_value = "0.8b")]
+        model: ModelSize,
         /// Cap article length (Unicode chars); prefill cost scales roughly with the square of token count on CPU.
         #[arg(long)]
         max_article_chars: Option<usize>,
@@ -47,6 +50,7 @@ pub fn data_dir() -> PathBuf {
 
 pub fn run_summary_bench(
     file: Option<PathBuf>,
+    model: ModelSize,
     max_article_chars: Option<usize>,
     runs: u32,
     cpu: bool,
@@ -59,14 +63,14 @@ pub fn run_summary_bench(
     let mut cfg = SummarizerConfig {
         hf_hub_cache_dir: Some(cache),
         prefer_gpu: !cpu,
-        ..SummarizerConfig::default()
+        ..SummarizerConfig::with_model_size(model)
     };
     if let Some(n) = max_article_chars {
         cfg.max_article_chars = n.max(256);
     }
 
     eprintln!(
-        "Bench config: max_article_chars={} max_new_tokens={}",
+        "Bench config: model={model} max_article_chars={} max_new_tokens={}",
         cfg.max_article_chars,
         INTERNAL_MAX_NEW_TOKENS
     );

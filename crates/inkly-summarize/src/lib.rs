@@ -21,8 +21,10 @@ use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::{AddBos, LlamaModel};
 use llama_cpp_2::sampling::LlamaSampler;
+use std::fmt;
 use std::io::Write;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tracing::instrument;
 
@@ -33,9 +35,107 @@ use crate::prompt::{build_user_message, format_chat_prompt};
 /// This is intentionally not configurable via API/CLI to keep decode latency bounded.
 pub const INTERNAL_MAX_NEW_TOKENS: usize = 1024;
 
+/// Supported Qwen3.5 model parameter sizes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModelSize {
+    /// Qwen3.5-0.8B
+    Q0_8B,
+    /// Qwen3.5-2B
+    Q2B,
+    /// Qwen3.5-4B
+    Q4B,
+    /// Qwen3.5-9B
+    Q9B,
+    /// Qwen3.5-27B
+    Q27B,
+    /// Qwen3.5-35B-A3B (MoE)
+    Q35B,
+    /// Qwen3.5-122B-A10B (MoE)
+    Q122B,
+}
+
+impl ModelSize {
+    pub const ALL: &[ModelSize] = &[
+        ModelSize::Q0_8B,
+        ModelSize::Q2B,
+        ModelSize::Q4B,
+        ModelSize::Q9B,
+        ModelSize::Q27B,
+        ModelSize::Q35B,
+        ModelSize::Q122B,
+    ];
+
+    /// Hugging Face repository hosting the Q4_K_M GGUF for this size.
+    pub fn gguf_repo(&self) -> &'static str {
+        match self {
+            ModelSize::Q0_8B => "unsloth/Qwen3.5-0.8B-GGUF",
+            ModelSize::Q2B => "unsloth/Qwen3.5-2B-GGUF",
+            ModelSize::Q4B => "unsloth/Qwen3.5-4B-GGUF",
+            ModelSize::Q9B => "unsloth/Qwen3.5-9B-GGUF",
+            ModelSize::Q27B => "unsloth/Qwen3.5-27B-GGUF",
+            ModelSize::Q35B => "unsloth/Qwen3.5-35B-A3B-GGUF",
+            ModelSize::Q122B => "unsloth/Qwen3.5-122B-A10B-GGUF",
+        }
+    }
+
+    /// GGUF filename for the Q4_K_M quantization of this size.
+    pub fn gguf_filename(&self) -> &'static str {
+        match self {
+            ModelSize::Q0_8B => "Qwen3.5-0.8B-Q4_K_M.gguf",
+            ModelSize::Q2B => "Qwen3.5-2B-Q4_K_M.gguf",
+            ModelSize::Q4B => "Qwen3.5-4B-Q4_K_M.gguf",
+            ModelSize::Q9B => "Qwen3.5-9B-Q4_K_M.gguf",
+            ModelSize::Q27B => "Qwen3.5-27B-Q4_K_M.gguf",
+            ModelSize::Q35B => "Qwen3.5-35B-A3B-Q4_K_M.gguf",
+            ModelSize::Q122B => "Qwen3.5-122B-A10B-Q4_K_M.gguf",
+        }
+    }
+}
+
+impl Default for ModelSize {
+    fn default() -> Self {
+        ModelSize::Q0_8B
+    }
+}
+
+impl fmt::Display for ModelSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            ModelSize::Q0_8B => "0.8b",
+            ModelSize::Q2B => "2b",
+            ModelSize::Q4B => "4b",
+            ModelSize::Q9B => "9b",
+            ModelSize::Q27B => "27b",
+            ModelSize::Q35B => "35b",
+            ModelSize::Q122B => "122b",
+        };
+        f.write_str(label)
+    }
+}
+
+impl FromStr for ModelSize {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "0.8b" | "0.8" => Ok(ModelSize::Q0_8B),
+            "2b" | "2" => Ok(ModelSize::Q2B),
+            "4b" | "4" => Ok(ModelSize::Q4B),
+            "9b" | "9" => Ok(ModelSize::Q9B),
+            "27b" | "27" => Ok(ModelSize::Q27B),
+            "35b" | "35" => Ok(ModelSize::Q35B),
+            "122b" | "122" => Ok(ModelSize::Q122B),
+            other => Err(format!(
+                "unknown model size `{other}`; valid values: 0.8b, 2b, 4b, 9b, 27b, 35b, 122b"
+            )),
+        }
+    }
+}
+
 /// Configuration for model files, decoding, and safety limits.
 #[derive(Debug, Clone)]
 pub struct SummarizerConfig {
+    pub model_size: ModelSize,
     /// Repo that hosts the GGUF file when `gguf_path` is `None`.
     pub gguf_repo: String,
     pub gguf_revision: String,
@@ -57,12 +157,27 @@ pub struct SummarizerConfig {
     pub seed: u64,
 }
 
+impl SummarizerConfig {
+    /// Create a config for the given model size with sensible defaults.
+    pub fn with_model_size(size: ModelSize) -> Self {
+        Self {
+            model_size: size,
+            gguf_repo: size.gguf_repo().to_string(),
+            gguf_revision: "main".to_string(),
+            gguf_filename: size.gguf_filename().to_string(),
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for SummarizerConfig {
     fn default() -> Self {
+        let size = ModelSize::default();
         Self {
-            gguf_repo: "unsloth/Qwen3-0.6B-GGUF".to_string(),
+            model_size: size,
+            gguf_repo: size.gguf_repo().to_string(),
             gguf_revision: "main".to_string(),
-            gguf_filename: "Qwen3-0.6B-Q4_K_M.gguf".to_string(),
+            gguf_filename: size.gguf_filename().to_string(),
             gguf_path: None,
             hf_hub_cache_dir: None,
             prefer_gpu: true,

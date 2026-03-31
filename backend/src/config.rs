@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use inkly_summarize::ModelSize;
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub host: String,
@@ -12,6 +14,9 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     /// When true, load the local LLM and populate the `summary` field on index routes. Default off.
     pub summarize_enabled: bool,
+    /// Which Qwen3.5 parameter size to load. Default: 0.8B.
+    /// Configured via `SUMMARIZE_MODEL` env var (e.g. `0.8b`, `2b`, `4b`, `9b`, `27b`, `35b`, `122b`).
+    pub summarize_model: ModelSize,
 }
 
 impl Config {
@@ -68,6 +73,11 @@ impl Config {
             ),
         };
 
+        let summarize_model: ModelSize = match std::env::var("SUMMARIZE_MODEL") {
+            Ok(raw) => raw.parse().map_err(|e: String| e)?,
+            Err(_) => ModelSize::default(),
+        };
+
         Ok(Self {
             host,
             data_dir,
@@ -77,6 +87,7 @@ impl Config {
             cors_permissive,
             cors_origins,
             summarize_enabled,
+            summarize_model,
         })
     }
 }

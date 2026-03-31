@@ -55,6 +55,7 @@ fn main() {
         }
         Commands::SummaryBench {
             file,
+            model,
             max_article_chars,
             runs,
             cpu,
@@ -62,7 +63,7 @@ fn main() {
         } => {
             dotenvy::dotenv().unwrap();
             tracing_subscriber::fmt().init();
-            if let Err(e) = cli::run_summary_bench(file, max_article_chars, runs, cpu, hf_cache) {
+            if let Err(e) = cli::run_summary_bench(file, model, max_article_chars, runs, cpu, hf_cache) {
                 eprintln!("summary-bench: {e}");
                 std::process::exit(1);
             }
@@ -101,11 +102,11 @@ async fn run_server() {
         }
         let summarizer_cfg = SummarizerConfig {
             hf_hub_cache_dir: Some(hf_hub_cache),
-            ..SummarizerConfig::default()
+            ..SummarizerConfig::with_model_size(config.summarize_model)
         };
         match Summarizer::load(summarizer_cfg) {
             Ok(s) => {
-                info!("summarization enabled (SUMMARIZE_ENABLED)");
+                info!(model = %config.summarize_model, "summarization enabled");
                 Some(s)
             }
             Err(e) => {
