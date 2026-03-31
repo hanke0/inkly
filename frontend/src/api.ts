@@ -47,6 +47,10 @@ async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
 
   const res = await fetch(path, { ...init, headers });
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   let body: unknown = null;
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
@@ -73,25 +77,10 @@ export async function indexDocument(doc: DocumentIn): Promise<IndexResponse> {
 
 /** Multipart upload: field `file` (UTF-8 text or HTML) plus text fields matching the index form. */
 export async function indexDocumentUpload(formData: FormData): Promise<IndexResponse> {
-  const headers = new Headers();
-  applyBasicAuth(headers);
-
-  const res = await fetch("/v1/documents/upload", { method: "POST", headers, body: formData });
-
-  let body: unknown = null;
-  const contentType = res.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    body = await res.json().catch(() => null);
-  } else {
-    body = await res.text().catch(() => null);
-  }
-
-  if (!res.ok) {
-    const err = (body as ErrorBody | null)?.error;
-    throw new Error(err ?? `Request failed: ${res.status}`);
-  }
-
-  return body as IndexResponse;
+  return apiFetch<IndexResponse>("/v1/documents/upload", {
+    method: "POST",
+    body: formData,
+  });
 }
 
 export async function indexDocumentsBulk(bulk: BulkIndexIn): Promise<IndexResponse> {
@@ -132,24 +121,7 @@ export async function fetchDocument(docId: number): Promise<DocumentDetailRespon
 }
 
 export async function deleteDocument(docId: number): Promise<void> {
-  const headers = new Headers();
-  applyBasicAuth(headers);
-
-  const res = await fetch(`/v1/documents/${docId}`, { method: "DELETE", headers });
-
-  if (res.status === 204) {
-    return;
-  }
-
-  let body: unknown = null;
-  const contentType = res.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    body = await res.json().catch(() => null);
-  } else {
-    body = await res.text().catch(() => null);
-  }
-  const err = (body as ErrorBody | null)?.error;
-  throw new Error(err ?? `Request failed: ${res.status}`);
+  return apiFetch<void>(`/v1/documents/${docId}`, { method: "DELETE" });
 }
 
 export async function fetchSession(): Promise<SessionResponse> {

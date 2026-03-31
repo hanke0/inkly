@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from "react";
+import { useId } from "react";
 
 import { IndexDocumentForm } from "./IndexDocumentForm";
+import { useModalBehavior } from "../hooks/useModalBehavior";
 import type { NewDocumentFormState } from "../hooks/useNewDocumentForm";
 
 type NewDocumentModalProps = {
@@ -11,26 +12,7 @@ type NewDocumentModalProps = {
 
 export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps) {
   const titleId = useId();
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onCloseRef.current();
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open]);
+  useModalBehavior(open, onClose);
 
   if (!open) {
     return null;

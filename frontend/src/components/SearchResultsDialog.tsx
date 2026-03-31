@@ -1,13 +1,14 @@
-import { useEffect, useId, useRef } from "react";
+import { useId, useRef } from "react";
 import { Link } from "react-router-dom";
 
+import { useModalBehavior } from "../hooks/useModalBehavior";
+import { docLink } from "../lib/docLink";
 import type { SearchResponse } from "../types";
 
 type SearchResultsDialogProps = {
   open: boolean;
   onClose: () => void;
   response: SearchResponse | null;
-  docLink: (docId: number, folderPath: string) => string;
   /** Optional line under the title (e.g. the query string). */
   queryHint?: string;
 };
@@ -16,30 +17,11 @@ export function SearchResultsDialog({
   open,
   onClose,
   response,
-  docLink,
   queryHint,
 }: SearchResultsDialogProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    queueMicrotask(() => closeRef.current?.focus());
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open, onClose]);
+  useModalBehavior(open, onClose, closeRef);
 
   if (!open || !response) {
     return null;
@@ -65,7 +47,7 @@ export function SearchResultsDialog({
             </h2>
             {queryHint ? (
               <p className="mt-1 truncate text-sm text-inkly-muted" title={queryHint}>
-                “{queryHint}”
+                "{queryHint}"
               </p>
             ) : null}
             <p className="mt-1 text-xs text-inkly-faint">{response.total_hits} hits</p>

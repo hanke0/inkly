@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 
+import { docLink } from "../lib/docLink";
 import type { CatalogResponse } from "../types";
 
 function pathBreadcrumbs(normalizedPath: string): { label: string; path: string }[] {
@@ -22,7 +23,6 @@ type CatalogSidebarProps = {
   catalogLoading: boolean;
   catalogErr: string;
   onPathChange: (path: string) => void;
-  docLink: (docId: number, folderPath: string) => string;
   /** Opens the new-document flow (e.g. modal). */
   onNewDocument?: () => void;
 };
@@ -32,7 +32,6 @@ export function CatalogSidebar({
   catalogLoading,
   catalogErr,
   onPathChange,
-  docLink,
   onNewDocument,
 }: CatalogSidebarProps) {
   const params = useParams();

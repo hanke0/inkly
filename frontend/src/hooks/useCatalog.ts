@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchCatalog } from "../api";
+import { extractErrorMessage } from "../lib/errors";
 import type { CatalogResponse } from "../types";
 
 export function useCatalog(catalogUrlPath: string) {
@@ -16,7 +17,7 @@ export function useCatalog(catalogUrlPath: string) {
       setCatalog(c);
     } catch (e) {
       setCatalog(null);
-      setCatalogErr(e instanceof Error ? e.message : "Catalog request failed.");
+      setCatalogErr(extractErrorMessage(e, "Catalog request failed."));
     } finally {
       setCatalogLoading(false);
     }

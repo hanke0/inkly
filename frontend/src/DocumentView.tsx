@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { deleteDocument, fetchDocument, search } from "./api";
-import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
-import { BrandHeader, DEFAULT_SEARCH_LIMIT } from "./components/BrandHeader";
-import { CatalogSidebar } from "./components/CatalogSidebar";
+import { deleteDocument, fetchDocument } from "./api";
 import { DocumentBody } from "./components/DocumentBody";
 import { NewDocumentModal } from "./components/NewDocumentModal";
 import { SearchResultsDialog } from "./components/SearchResultsDialog";
+import { SidebarLayout } from "./components/SidebarLayout";
 import { useCatalog } from "./hooks/useCatalog";
 import { useNewDocumentForm } from "./hooks/useNewDocumentForm";
-import type { DocumentDetailResponse, SearchQuery, SearchResponse } from "./types";
+import { useSearch } from "./hooks/useSearch";
+import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
+import { extractErrorMessage } from "./lib/errors";
+import type { DocumentDetailResponse } from "./types";
 
 export default function DocumentView() {
   const { docId: docIdParam } = useParams();
@@ -21,6 +22,7 @@ export default function DocumentView() {
   const docId = docIdParam ? Number.parseInt(docIdParam, 10) : NaN;
 
   const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(returnPath);
+  const searchState = useSearch(returnPath);
 
   const [indexModalOpen, setIndexModalOpen] = useState(false);
   const newDocForm = useNewDocumentForm((_, ctx) => {
@@ -30,7 +32,7 @@ export default function DocumentView() {
       void fetchDocument(docId)
         .then((d) => setDoc(d))
         .catch((err) =>
-          setError(err instanceof Error ? err.message : "Failed to refresh document."),
+          setError(extractErrorMessage(err, "Failed to refresh document.")),
         );
     }
   });
@@ -38,16 +40,6 @@ export default function DocumentView() {
   const [doc, setDoc] = useState<DocumentDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const [q, setQ] = useState("");
-  const [limit, setLimit] = useState(DEFAULT_SEARCH_LIMIT);
-  const [limitToFolder, setLimitToFolder] = useState(true);
-  const [tagsFilter, setTagsFilter] = useState("");
-  const [searchSummary, setSearchSummary] = useState<string | undefined>(undefined);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchErr, setSearchErr] = useState("");
-  const [searchRes, setSearchRes] = useState<SearchResponse | null>(null);
-  const [searchResultsOpen, setSearchResultsOpen] = useState(false);
 
   useEffect(() => {
     if (!Number.isFinite(docId) || docId < 1) {
@@ -67,7 +59,7 @@ export default function DocumentView() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load document.");
+          setError(extractErrorMessage(err, "Failed to load document."));
         }
       })
       .finally(() => {
@@ -80,9 +72,6 @@ export default function DocumentView() {
       cancelled = true;
     };
   }, [docId]);
-
-  const docLink = (docIdNum: number, folderPath: string) =>
-    `/doc/${docIdNum}?path=${encodeURIComponent(folderPath)}`;
 
   function onCatalogPathChange(p: string) {
     navigate({ pathname: "/", search: `?path=${encodeURIComponent(p)}` });
@@ -115,100 +104,30 @@ export default function DocumentView() {
       void reloadCatalog();
       navigate({ pathname: "/", search: `?path=${encodeURIComponent(returnPath)}` });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed.");
-    }
-  }
-
-  async function runSearch() {
-    setSearchErr("");
-    setSearchRes(null);
-    setSearchResultsOpen(false);
-    setSearchLoading(true);
-    const trimmed = q.trim();
-    const tagParts = tagsFilter
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    const usePath = limitToFolder && returnPath !== "/";
-    if (!trimmed && !usePath && tagParts.length === 0) {
-      setSearchLoading(false);
-      setSearchErr("Enter keywords, tags (in settings), or limit to the current folder.");
-      return;
-    }
-    const query: SearchQuery = {
-      q: trimmed,
-      limit: Math.max(1, Math.min(50, limit)),
-    };
-    if (usePath) {
-      query.path = returnPath;
-    }
-    if (tagParts.length > 0) {
-      query.tags = tagParts.join(",");
-    }
-    const summaryParts: string[] = [];
-    if (trimmed) {
-      summaryParts.push(trimmed);
-    }
-    if (usePath) {
-      summaryParts.push(`in ${returnPath}`);
-    }
-    if (tagParts.length > 0) {
-      summaryParts.push(`tags: ${tagParts.join(", ")}`);
-    }
-    setSearchSummary(summaryParts.length > 0 ? summaryParts.join(" · ") : undefined);
-    try {
-      const res = await search(query);
-      setSearchRes(res);
-      setSearchResultsOpen(true);
-    } catch (err) {
-      setSearchErr(err instanceof Error ? err.message : "Search request failed.");
-    } finally {
-      setSearchLoading(false);
+      setError(extractErrorMessage(err, "Delete failed."));
     }
   }
 
   const htmlReading = doc != null && looksLikeHtml(firstLineProbe(doc.content));
 
   return (
-    <div className="flex h-full min-h-0 w-full max-w-full flex-col bg-inkly-shell text-inkly-ink md:flex-row">
-      <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-b border-inkly-line bg-gradient-to-b from-inkly-sidebar to-inkly-sidebar-deep md:max-h-none md:w-[17.5rem] md:border-b-0 md:border-r md:shadow-[inset_-1px_0_0_rgba(196,189,176,0.45)]">
-        <div className="relative z-20 shrink-0 border-b border-inkly-line/70 bg-inkly-sidebar/30 px-3 py-3 md:px-4">
-          <BrandHeader
-            search={{
-              q,
-              onQChange: setQ,
-              limit,
-              onLimitChange: setLimit,
-              onSearch: () => {
-                void runSearch();
-              },
-              loading: searchLoading,
-              catalogPath: returnPath,
-              limitToFolder,
-              onLimitToFolderChange: setLimitToFolder,
-              tagsFilter,
-              onTagsFilterChange: setTagsFilter,
-            }}
-          />
-          {searchErr ? (
+    <>
+      <SidebarLayout
+        searchHeaderProps={searchState.headerProps}
+        sidebarHeaderExtra={
+          searchState.error ? (
             <div className="mt-2 rounded-md border border-red-200/90 bg-red-50/95 px-2 py-1.5 text-[11px] leading-snug text-red-800">
-              {searchErr}
+              {searchState.error}
             </div>
-          ) : null}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 md:px-4">
-          <CatalogSidebar
-            catalog={catalog}
-            catalogLoading={catalogLoading}
-            catalogErr={catalogErr}
-            onPathChange={onCatalogPathChange}
-            docLink={docLink}
-            onNewDocument={openNewDocumentModal}
-          />
-        </div>
-      </aside>
-
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-inkly-paper">
+          ) : null
+        }
+        catalog={catalog}
+        catalogLoading={catalogLoading}
+        catalogErr={catalogErr}
+        onCatalogPathChange={onCatalogPathChange}
+        onNewDocument={openNewDocumentModal}
+        mainClassName="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-inkly-paper"
+      >
         <div
           className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-inkly-paper px-4 pb-3 pt-4 md:px-8 md:pb-4 md:pt-5 ${
             htmlReading ? "flex min-h-0 flex-col" : ""
@@ -297,14 +216,13 @@ export default function DocumentView() {
             </article>
           ) : null}
         </div>
-      </main>
+      </SidebarLayout>
 
       <SearchResultsDialog
-        open={searchResultsOpen}
-        onClose={() => setSearchResultsOpen(false)}
-        response={searchRes}
-        docLink={docLink}
-        queryHint={searchSummary}
+        open={searchState.resultsOpen}
+        onClose={searchState.closeResults}
+        response={searchState.results}
+        queryHint={searchState.searchSummary}
       />
 
       <NewDocumentModal
@@ -312,6 +230,6 @@ export default function DocumentView() {
         onClose={() => setIndexModalOpen(false)}
         form={newDocForm}
       />
-    </div>
+    </>
   );
 }

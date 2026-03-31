@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { indexDocument, indexDocumentUpload } from "../api";
+import { extractErrorMessage } from "../lib/errors";
 import type { DocumentDetailResponse, DocumentIn, IndexResponse } from "../types";
 
 export type IndexSuccessContext = {
@@ -108,7 +109,7 @@ export function useNewDocumentForm(
       }
       onSuccessRef.current(res, updateId != null ? { updatedDocId: updateId } : {});
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Index request failed.");
+      setFormError(extractErrorMessage(err, "Index request failed."));
     } finally {
       setLoading(false);
     }
