@@ -166,7 +166,15 @@ impl Summarizer {
         if article.trim().is_empty() {
             return Err(SummarizeError::EmptyArticle);
         }
-        let (body, truncated) = clamp_chars(article, self.config.max_article_chars);
+        let plain = if looks_like_html(article) {
+            html_to_plain(article)
+        } else {
+            article.to_string()
+        };
+        if plain.trim().is_empty() {
+            return Err(SummarizeError::EmptyArticle);
+        }
+        let (body, truncated) = clamp_chars(&plain, self.config.max_article_chars);
         let user = build_user_message(&body, truncated);
         let prompt = format_chat_prompt(&user);
         let prompt_tokens = self
@@ -270,6 +278,39 @@ fn resolve_gguf_path(config: &SummarizerConfig) -> Result<PathBuf, SummarizeErro
     Ok(path)
 }
 
+fn looks_like_html(s: &str) -> bool {
+    let t = s.trim_start();
+    if t.is_empty() {
+        return false;
+    }
+    if t.starts_with("<!DOCTYPE") || t.starts_with("<!doctype") {
+        return true;
+    }
+    if t.len() >= 5 && t[..5].eq_ignore_ascii_case("<html") {
+        return true;
+    }
+    if t.starts_with("<?xml") {
+        return true;
+    }
+    if t.starts_with("<!--") {
+        return true;
+    }
+    // Generic opening tag: `<tagname` followed by whitespace, `>`, `/`, or end.
+    if let Some(rest) = t.strip_prefix('<') {
+        let first = rest.as_bytes().first().copied().unwrap_or(0);
+        if first.is_ascii_alphabetic() {
+            return true;
+        }
+    }
+    false
+}
+
+fn html_to_plain(html: &str) -> String {
+    html2text::config::plain()
+        .string_from_read(html.as_bytes(), 200)
+        .unwrap_or_default()
+}
+
 fn clamp_chars(s: &str, max: usize) -> (String, bool) {
     let n = s.chars().count();
     if n <= max {
@@ -340,5 +381,42 @@ mod tests {
     fn strip_think_sections_keeps_plain_text() {
         let got = strip_think_sections("plain summary");
         assert_eq!(got, "plain summary");
+    }
+
+    #[test]
+    fn looks_like_html_detects_doctype() {
+        assert!(looks_like_html("<!DOCTYPE html><html><body>hi</body></html>"));
+    }
+
+    #[test]
+    fn looks_like_html_detects_tag() {
+        assert!(looks_like_html("<div>hello</div>"));
+    }
+
+    #[test]
+    fn looks_like_html_rejects_plain_text() {
+        assert!(!looks_like_html("just some plain text"));
+    }
+
+    #[test]
+    fn looks_like_html_leading_whitespace() {
+        assert!(looks_like_html("  \n  <html lang=\"en\">"));
+    }
+
+    #[test]
+    fn html_to_plain_extracts_text() {
+        let html = "<html><body><h1>Title</h1><p>Hello world</p></body></html>";
+        let text = html_to_plain(html);
+        assert!(text.contains("Title"));
+        assert!(text.contains("Hello world"));
+        assert!(!text.contains("<h1>"));
+    }
+
+    #[test]
+    fn html_to_plain_strips_scripts() {
+        let html = "<p>visible</p><script>alert('x')</script>";
+        let text = html_to_plain(html);
+        assert!(text.contains("visible"));
+        assert!(!text.contains("alert"));
     }
 }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 hf-hub = "0.4"
+html2text = "0.16"
 llama-cpp-2 = "0.1.141"
 thiserror = "2"
 tracing = "0.1"
