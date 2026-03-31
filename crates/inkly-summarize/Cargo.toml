@@ -4,36 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-candle-core = "0.9.2"
-candle-nn = "0.9.2"
-candle-transformers = "0.9.2"
 hf-hub = "0.4"
+llama-cpp-2 = "0.1.141"
 thiserror = "2"
-tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 tracing = "0.1"
 
 [features]
 default = []
-cuda = [
-  "candle-core/cuda",
-  "candle-nn/cuda",
-  "candle-transformers/cuda",
-]
-accelerate = [
-  "candle-core/accelerate",
-  "candle-nn/accelerate",
-  "candle-transformers/accelerate",
-]
-metal = [
-  "candle-core/metal",
-  "candle-nn/metal",
-  "candle-transformers/metal",
-]
-# Faster CPU: Apple → --features accelerate; x86 + Intel MKL → --features mkl
-# On Linux/WSL you need oneAPI MKL-devel (e.g. apt: intel-oneapi-mkl-devel, libomp-dev).
-# The crates.io MKL fallback (MKL 2020.1) is too old for Candle’s f16 matmul (missing hgemm_).
-mkl = [
-  "candle-core/mkl",
-  "candle-nn/mkl",
-  "candle-transformers/mkl",
-]
+cuda = ["llama-cpp-2/cuda"]
+metal = []
+vulkan = []
+accelerate = []
+mkl = []
