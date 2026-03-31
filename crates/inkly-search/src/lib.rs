@@ -4,6 +4,6 @@ pub mod storage_meta;
 
 pub use error::SearchError;
 pub use index_manager::{
-    CatalogListing, IndexManager, IndexStats, SearchResultItem, StoredDocument,
+    CatalogListing, DocumentRow, IndexManager, IndexStats, SearchResultItem, StoredDocument,
 };
 pub use storage_meta::STORAGE_DATA_VERSION;

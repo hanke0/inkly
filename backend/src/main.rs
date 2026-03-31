@@ -79,21 +79,20 @@ fn main() {
 
 async fn run_server() {
     dotenvy::dotenv().ok();
+    tracing_subscriber::fmt().init();
 
     let config = match config::Config::from_env() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("startup error: {e}");
+            tracing::error!("startup error: {e}");
             return;
         }
     };
 
-    tracing_subscriber::fmt().init();
-
     let index = match IndexManager::open_or_create(&config.data_dir) {
         Ok(i) => i,
         Err(e) => {
-            eprintln!("startup error: failed to open index: {e}");
+            tracing::error!("startup error: failed to open index: {e}");
             return;
         }
     };
@@ -101,9 +100,9 @@ async fn run_server() {
     let summarizer = if config.summarize_enabled {
         let hf_hub_cache = config.data_dir.join("huggingface").join("hub");
         if let Err(e) = std::fs::create_dir_all(&hf_hub_cache) {
-            eprintln!(
-                "startup error: failed to create Hugging Face cache dir {}: {e}",
-                hf_hub_cache.display()
+            tracing::error!(
+                path = %hf_hub_cache.display(),
+                "startup error: failed to create Hugging Face cache dir: {e}"
             );
             return;
         }
@@ -117,7 +116,7 @@ async fn run_server() {
                 Some(s)
             }
             Err(e) => {
-                eprintln!("startup error: failed to initialize summarizer: {e}");
+                tracing::error!("startup error: failed to initialize summarizer: {e}");
                 return;
             }
         }
@@ -129,7 +128,7 @@ async fn run_server() {
     let cors_layer = match build_cors_layer(&config) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("startup error: {e}");
+            tracing::error!("startup error: {e}");
             return;
         }
     };
@@ -171,13 +170,12 @@ async fn run_server() {
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("startup error: failed to bind {addr}: {e}");
+            tracing::error!("startup error: failed to bind {addr}: {e}");
             return;
         }
     };
     info!("server running on {addr}");
     if let Err(e) = axum::serve(listener, app).await {
-        // Startup path: ok to log, but never panic.
-        eprintln!("server error: {e}");
+        tracing::error!("server error: {e}");
     }
 }

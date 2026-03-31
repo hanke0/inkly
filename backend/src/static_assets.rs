@@ -12,7 +12,7 @@ fn mime_for_path(path: &str) -> HeaderValue {
     HeaderValue::from_str(mime.as_ref()).unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"))
 }
 
-async fn not_found() -> Response {
+fn not_found() -> Response {
     (StatusCode::NOT_FOUND, "not found").into_response()
 }
 
@@ -20,7 +20,7 @@ pub async fn spa_fallback(OriginalUri(uri): OriginalUri) -> Response {
     let path = uri.path();
     // Disallow API fallthrough to avoid hiding errors behind `index.html`.
     if path.starts_with("/v1/") {
-        return not_found().await;
+        return not_found();
     }
 
     let rel_path = path.strip_prefix('/').unwrap_or(path);

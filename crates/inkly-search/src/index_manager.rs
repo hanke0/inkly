@@ -13,10 +13,28 @@ use tantivy::{doc, schema, Index, Term};
 use crate::error::{Result, SearchError};
 use crate::storage_meta;
 
+/// Tantivy writer heap budget (bytes). 50 MiB is generous for batch commits at this scale.
+const WRITER_HEAP_BYTES: usize = 50_000_000;
+
 #[derive(Clone, Debug)]
 pub struct IndexStats {
     pub indexed: u64,
     pub deleted: u64,
+}
+
+/// Owned document fields passed to [`IndexManager::index_document`] and
+/// [`IndexManager::index_documents`]. Using a named struct instead of a positional tuple
+/// prevents argument-order mistakes at call sites.
+#[derive(Clone, Debug)]
+pub struct DocumentRow {
+    pub doc_id: u64,
+    pub title: String,
+    pub content: String,
+    pub doc_url: String,
+    pub summary: String,
+    pub tags: Vec<String>,
+    pub path: String,
+    pub note: String,
 }
 
 #[derive(Clone, Debug)]
@@ -82,6 +100,31 @@ fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Field extraction helpers
+// ---------------------------------------------------------------------------
+
+fn get_str_field(doc: &tantivy::TantivyDocument, field: Field) -> String {
+    doc.get_first(field)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn get_u64_field(doc: &tantivy::TantivyDocument, field: Field) -> u64 {
+    doc.get_first(field)
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+}
+
+fn get_i64_field(doc: &tantivy::TantivyDocument, field: Field) -> i64 {
+    doc.get_first(field)
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+}
+
+// ---------------------------------------------------------------------------
+
 struct AutoIncrementState {
     version_path: PathBuf,
     data_version: u32,
@@ -115,28 +158,39 @@ impl IndexManager {
         Ok(now)
     }
 
+    /// Returns a `BooleanQuery` that matches a single (tenant, doc_id) pair.
+    /// Reused by index, update, and delete operations to avoid repeated boilerplate.
+    fn make_tenant_doc_query(&self, tenant_id: &str, doc_id: u64) -> BooleanQuery {
+        BooleanQuery::new(vec![
+            (
+                Occur::Must,
+                Box::new(TermQuery::new(
+                    Term::from_field_text(self.tenant_id_field, tenant_id),
+                    IndexRecordOption::Basic,
+                )) as Box<dyn Query>,
+            ),
+            (
+                Occur::Must,
+                Box::new(TermQuery::new(
+                    Term::from_field_u64(self.doc_id_field, doc_id),
+                    IndexRecordOption::Basic,
+                )) as Box<dyn Query>,
+            ),
+        ])
+    }
+
     fn existing_created_at(
         &self,
         searcher: &tantivy::Searcher,
         tenant_id: &str,
         doc_id: u64,
     ) -> Result<Option<i64>> {
-        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
-
-        let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
-        let doc_id_query = TermQuery::new(doc_id_term, IndexRecordOption::Basic);
-        let query = BooleanQuery::new(vec![
-            (Occur::Must, Box::new(tenant_query)),
-            (Occur::Must, Box::new(doc_id_query)),
-        ]);
-
+        let query = self.make_tenant_doc_query(tenant_id, doc_id);
         let hits = searcher.search(&query, &TopDocs::with_limit(1))?;
         let (_, doc_address) = match hits.into_iter().next() {
             Some(h) => h,
             None => return Ok(None),
         };
-
         let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
         let created_at = retrieved
             .get_first(self.created_timestamp_field)
@@ -273,64 +327,40 @@ impl IndexManager {
         builder.build()
     }
 
-    pub fn index_document(
-        &self,
-        tenant_id: &str,
-        doc_id: u64,
-        title: &str,
-        content: &str,
-        summary: &str,
-        doc_url: &str,
-        tags: &[String],
-        path: &str,
-        note: &str,
-    ) -> Result<IndexStats> {
-        let now = Self::now_unix_seconds()?;
-
+    pub fn index_document(&self, tenant_id: &str, doc: DocumentRow) -> Result<IndexStats> {
         if tenant_id.trim().is_empty() {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
-        // u64 doc_id is always "present".
+
+        let now = Self::now_unix_seconds()?;
 
         // Drop the reader before opening a writer — Tantivy can fail or deadlock if both are held.
         let created_at = {
             let reader = self.index.reader()?;
             let searcher = reader.searcher();
-            self.existing_created_at(&searcher, tenant_id, doc_id)?
+            self.existing_created_at(&searcher, tenant_id, doc.doc_id)?
                 .unwrap_or(now)
         };
-        let updated_at = now;
 
-        let mut writer = self.index.writer(50_000_000)?;
-        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
-        let delete_tenant_query =
-            TermQuery::new(tenant_term, IndexRecordOption::Basic);
-        let delete_doc_id_query =
-            TermQuery::new(doc_id_term, IndexRecordOption::Basic);
-        let delete_query = BooleanQuery::new(vec![
-            (Occur::Must, Box::new(delete_tenant_query)),
-            (Occur::Must, Box::new(delete_doc_id_query)),
-        ]);
-        writer.delete_query(Box::new(delete_query))?;
+        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
+        writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
 
         let mut document = doc!(
             self.tenant_id_field => tenant_id,
-            self.doc_id_field => doc_id,
-            self.doc_url_field => doc_url,
-            self.title_field => title,
-            self.content_field => content,
-            self.summary_field => summary,
+            self.doc_id_field => doc.doc_id,
+            self.doc_url_field => doc.doc_url.as_str(),
+            self.title_field => doc.title.as_str(),
+            self.content_field => doc.content.as_str(),
+            self.summary_field => doc.summary.as_str(),
             self.created_timestamp_field => created_at,
-            self.update_timestamp_field => updated_at,
-            self.path_field => path,
-            self.note_field => note
+            self.update_timestamp_field => now,
+            self.path_field => doc.path.as_str(),
+            self.note_field => doc.note.as_str()
         );
-        for tag in tags {
+        for tag in &doc.tags {
             document.add_text(self.tags_field, tag);
         }
         writer.add_document(document)?;
-
         writer.commit()?;
 
         Ok(IndexStats {
@@ -342,62 +372,48 @@ impl IndexManager {
     pub fn index_documents(
         &self,
         tenant_id: &str,
-        docs: impl IntoIterator<Item = (u64, String, String, String, Vec<String>, String, String, String)>,
+        docs: impl IntoIterator<Item = DocumentRow>,
     ) -> Result<IndexStats> {
-        let now = Self::now_unix_seconds()?;
+        if tenant_id.trim().is_empty() {
+            return Err(SearchError::InvalidInput("tenant_id is empty".into()));
+        }
 
-        let docs: Vec<_> = docs.into_iter().collect();
+        let now = Self::now_unix_seconds()?;
+        let docs: Vec<DocumentRow> = docs.into_iter().collect();
 
         let created_at_per_doc: Vec<i64> = {
             let reader = self.index.reader()?;
             let searcher = reader.searcher();
-            let mut v = Vec::with_capacity(docs.len());
-            for (doc_id, _, _, _, _, _, _, _) in &docs {
-                let created_at = self
-                    .existing_created_at(&searcher, tenant_id, *doc_id)?
-                    .unwrap_or(now);
-                v.push(created_at);
-            }
-            v
+            docs.iter()
+                .map(|d| {
+                    self.existing_created_at(&searcher, tenant_id, d.doc_id)
+                        .map(|opt| opt.unwrap_or(now))
+                })
+                .collect::<Result<Vec<_>>>()?
         };
 
-        let mut writer = self.index.writer(50_000_000)?;
+        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
         let mut indexed = 0u64;
 
-        for ((doc_id, title, content, doc_url, tags, path, note, summary), created_at) in
-            docs.into_iter().zip(created_at_per_doc)
-        {
-            let updated_at = now;
-
-            let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-            let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
-            let delete_tenant_query =
-                TermQuery::new(tenant_term, IndexRecordOption::Basic);
-            let delete_doc_id_query =
-                TermQuery::new(doc_id_term, IndexRecordOption::Basic);
-            let delete_query = BooleanQuery::new(vec![
-                (Occur::Must, Box::new(delete_tenant_query)),
-                (Occur::Must, Box::new(delete_doc_id_query)),
-            ]);
-            writer.delete_query(Box::new(delete_query))?;
+        for (doc, created_at) in docs.into_iter().zip(created_at_per_doc) {
+            writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
 
             let mut document = doc!(
                 self.tenant_id_field => tenant_id,
-                self.doc_id_field => doc_id,
-                self.doc_url_field => doc_url,
-                self.title_field => title,
-                self.content_field => content,
-                self.summary_field => summary,
+                self.doc_id_field => doc.doc_id,
+                self.doc_url_field => doc.doc_url.as_str(),
+                self.title_field => doc.title.as_str(),
+                self.content_field => doc.content.as_str(),
+                self.summary_field => doc.summary.as_str(),
                 self.created_timestamp_field => created_at,
-                self.update_timestamp_field => updated_at,
-                self.path_field => path,
-                self.note_field => note
+                self.update_timestamp_field => now,
+                self.path_field => doc.path.as_str(),
+                self.note_field => doc.note.as_str()
             );
-            for tag in &tags {
+            for tag in &doc.tags {
                 document.add_text(self.tags_field, tag);
             }
             writer.add_document(document)?;
-
             indexed += 1;
         }
 
@@ -430,8 +446,10 @@ impl IndexManager {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
 
-        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-        let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
+        let tenant_query = TermQuery::new(
+            Term::from_field_text(self.tenant_id_field, tenant_id),
+            IndexRecordOption::Basic,
+        );
 
         let full_query: Box<dyn Query> = if query_str.is_empty() {
             Box::new(AllQuery)
@@ -465,38 +483,22 @@ impl IndexManager {
 
         let query = BooleanQuery::new(clauses);
 
-        let top_docs = TopDocs::with_limit(limit);
         let total_hits = query.count(&searcher)? as u64;
-        let hits = searcher.search(&query, &top_docs)?;
+        let hits = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
         let mut results = Vec::with_capacity(hits.len());
         for (score, doc_address) in hits {
             let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-            let title = retrieved
-                .get_first(self.title_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let content = retrieved
-                .get_first(self.content_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let summary = retrieved
-                .get_first(self.summary_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let note = retrieved
-                .get_first(self.note_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let doc_id = retrieved.get_first(self.doc_id_field).and_then(|v| v.as_u64()).unwrap_or(0);
-            let doc_url = retrieved.get_first(self.doc_url_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let created_at = retrieved.get_first(self.created_timestamp_field).and_then(|v| v.as_i64()).unwrap_or(0);
-            let updated_at = retrieved.get_first(self.update_timestamp_field).and_then(|v| v.as_i64()).unwrap_or(0);
-            let path = retrieved.get_first(self.path_field).and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+            let title = get_str_field(&retrieved, self.title_field);
+            let content = get_str_field(&retrieved, self.content_field);
+            let summary = get_str_field(&retrieved, self.summary_field);
+            let note = get_str_field(&retrieved, self.note_field);
+            let doc_url = get_str_field(&retrieved, self.doc_url_field);
+            let path = get_str_field(&retrieved, self.path_field);
+            let doc_id = get_u64_field(&retrieved, self.doc_id_field);
+            let created_at = get_i64_field(&retrieved, self.created_timestamp_field);
+            let updated_at = get_i64_field(&retrieved, self.update_timestamp_field);
             let tags = retrieved
                 .get_all(self.tags_field)
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
@@ -587,15 +589,8 @@ impl IndexManager {
         let mut files: Vec<(u64, String)> = Vec::new();
         for (_, doc_address) in file_hits {
             let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-            let doc_id = retrieved
-                .get_first(self.doc_id_field)
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let title = retrieved
-                .get_first(self.title_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let doc_id = get_u64_field(&retrieved, self.doc_id_field);
+            let title = get_str_field(&retrieved, self.title_field);
             if doc_id != 0 {
                 files.push((doc_id, title));
             }
@@ -612,19 +607,7 @@ impl IndexManager {
     pub fn get_document(&self, tenant_id: &str, doc_id: u64) -> Result<Option<StoredDocument>> {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
-        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
-        let query = BooleanQuery::new(vec![
-            (
-                Occur::Must,
-                Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic)),
-            ),
-            (
-                Occur::Must,
-                Box::new(TermQuery::new(doc_id_term, IndexRecordOption::Basic)),
-            ),
-        ]);
-
+        let query = self.make_tenant_doc_query(tenant_id, doc_id);
         let hits = searcher.search(&query, &TopDocs::with_limit(1))?;
         let (_, doc_address) = match hits.into_iter().next() {
             Some(h) => h,
@@ -633,52 +616,19 @@ impl IndexManager {
 
         let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
         Ok(Some(StoredDocument {
-            doc_id: retrieved
-                .get_first(self.doc_id_field)
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-            title: retrieved
-                .get_first(self.title_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            content: retrieved
-                .get_first(self.content_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            summary: retrieved
-                .get_first(self.summary_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            doc_url: retrieved
-                .get_first(self.doc_url_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            path: retrieved
-                .get_first(self.path_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            note: retrieved
-                .get_first(self.note_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+            doc_id: get_u64_field(&retrieved, self.doc_id_field),
+            title: get_str_field(&retrieved, self.title_field),
+            content: get_str_field(&retrieved, self.content_field),
+            summary: get_str_field(&retrieved, self.summary_field),
+            doc_url: get_str_field(&retrieved, self.doc_url_field),
+            path: get_str_field(&retrieved, self.path_field),
+            note: get_str_field(&retrieved, self.note_field),
             tags: retrieved
                 .get_all(self.tags_field)
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect(),
-            created_at: retrieved
-                .get_first(self.created_timestamp_field)
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-            updated_at: retrieved
-                .get_first(self.update_timestamp_field)
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            created_at: get_i64_field(&retrieved, self.created_timestamp_field),
+            updated_at: get_i64_field(&retrieved, self.update_timestamp_field),
         }))
     }
 
@@ -699,14 +649,8 @@ impl IndexManager {
             return Ok(false);
         }
 
-        let mut writer = self.index.writer::<tantivy::TantivyDocument>(50_000_000)?;
-        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-        let doc_id_term = Term::from_field_u64(self.doc_id_field, doc_id);
-        let delete_query = BooleanQuery::new(vec![
-            (Occur::Must, Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic))),
-            (Occur::Must, Box::new(TermQuery::new(doc_id_term, IndexRecordOption::Basic))),
-        ]);
-        writer.delete_query(Box::new(delete_query))?;
+        let mut writer = self.index.writer::<tantivy::TantivyDocument>(WRITER_HEAP_BYTES)?;
+        writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc_id)))?;
         writer.commit()?;
 
         Ok(true)
@@ -716,7 +660,7 @@ impl IndexManager {
 #[cfg(test)]
 mod tests {
     use super::direct_subdir_under;
-    use super::IndexManager;
+    use super::{DocumentRow, IndexManager};
     use tempfile::tempdir;
 
     #[test]
@@ -724,40 +668,49 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let im = IndexManager::open_or_create(dir.path()).expect("open");
         let tenant = "t_search_filters";
+
         im.index_document(
             tenant,
-            1,
-            "Alpha",
-            "body one",
-            "",
-            "/proj/",
-            &["rust".to_string()],
-            "",
-            "",
+            DocumentRow {
+                doc_id: 1,
+                title: "Alpha".to_string(),
+                content: "body one".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec!["rust".to_string()],
+                path: "/proj/".to_string(),
+                note: String::new(),
+            },
         )
         .expect("idx1");
+
         im.index_document(
             tenant,
-            2,
-            "Beta",
-            "body two",
-            "",
-            "/proj/sub/",
-            &["rust".to_string(), "cli".to_string()],
-            "",
-            "",
+            DocumentRow {
+                doc_id: 2,
+                title: "Beta".to_string(),
+                content: "body two".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec!["rust".to_string(), "cli".to_string()],
+                path: "/proj/sub/".to_string(),
+                note: String::new(),
+            },
         )
         .expect("idx2");
+
         im.index_document(
             tenant,
-            3,
-            "Gamma",
-            "body three",
-            "",
-            "/other/",
-            &[],
-            "",
-            "",
+            DocumentRow {
+                doc_id: 3,
+                title: "Gamma".to_string(),
+                content: "body three".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec![],
+                path: "/other/".to_string(),
+                note: String::new(),
+            },
         )
         .expect("idx3");
 
@@ -815,8 +768,20 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let im = IndexManager::open_or_create(dir.path()).expect("open");
         let tenant = "t_delete";
-        im.index_document(tenant, 42, "Hi", "body", "", "/", &[], "", "")
-            .expect("idx");
+        im.index_document(
+            tenant,
+            DocumentRow {
+                doc_id: 42,
+                title: "Hi".to_string(),
+                content: "body".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec![],
+                path: "/".to_string(),
+                note: String::new(),
+            },
+        )
+        .expect("idx");
         assert!(im.delete_document(tenant, 42).expect("del"));
         assert!(!im.delete_document(tenant, 42).expect("del again"));
         assert!(im.get_document(tenant, 42).expect("get").is_none());

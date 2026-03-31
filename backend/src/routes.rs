@@ -2,9 +2,9 @@ use axum::extract::{Json, Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Extension;
 use axum::response::IntoResponse;
-// (no router helpers here; handlers are wired in `main.rs`)
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
+use std::result::Result;
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -14,12 +14,8 @@ use inkly_contract::dto::{
     BulkIndexIn, CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentDetailResponse,
     DocumentIn, IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
 };
-use std::result::Result;
-
-use inkly_search::SearchError;
-use inkly_summarize::Summarizer;
-use tracing::info;
-use tracing::warn;
+use inkly_search::{DocumentRow, SearchError, SearchResultItem, StoredDocument};
+use tracing::{info, warn};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -39,6 +35,10 @@ pub async fn session(Extension(user): Extension<AuthUser>) -> Result<Json<Sessio
     );
     Ok(Json(SessionResponse { ok: true }))
 }
+
+// ---------------------------------------------------------------------------
+// Input validation helpers
+// ---------------------------------------------------------------------------
 
 /// Normalizes a logical directory path: `/` or `/segment/.../` (trailing slash except root).
 fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
@@ -87,7 +87,7 @@ fn validate_document_path(path: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Single tag: non-empty after trim; only Unicode letters, numbers, and `_` (no other punctuation or symbols).
+/// Single tag: non-empty after trim; only Unicode letters, numbers, and `_`.
 fn validate_tag_format(tag: &str) -> Result<(), ApiError> {
     let t = tag.trim();
     if t.is_empty() {
@@ -96,10 +96,7 @@ fn validate_tag_format(tag: &str) -> Result<(), ApiError> {
     if t.chars().any(|c| c.is_control()) {
         return Err(ApiError::bad_request("invalid tags"));
     }
-    if !t
-        .chars()
-        .all(|c| c == '_' || c.is_alphanumeric())
-    {
+    if !t.chars().all(|c| c == '_' || c.is_alphanumeric()) {
         return Err(ApiError::bad_request("invalid tags"));
     }
     Ok(())
@@ -113,9 +110,48 @@ fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Conversion helpers
+// ---------------------------------------------------------------------------
+
+fn into_search_result(it: SearchResultItem) -> SearchResult {
+    SearchResult {
+        doc_id: it.doc_id,
+        title: it.title,
+        doc_url: it.doc_url,
+        snippet: it.snippet,
+        summary: it.summary,
+        score: it.score,
+        created_at: it.created_at,
+        updated_at: it.updated_at,
+        tags: it.tags,
+        path: it.path,
+        note: it.note,
+    }
+}
+
+fn into_document_detail(d: StoredDocument) -> DocumentDetailResponse {
+    DocumentDetailResponse {
+        doc_id: d.doc_id,
+        title: d.title,
+        content: d.content,
+        summary: d.summary,
+        doc_url: d.doc_url,
+        path: d.path,
+        note: d.note,
+        tags: d.tags,
+        created_at: d.created_at,
+        updated_at: d.updated_at,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Summarization
+// ---------------------------------------------------------------------------
+
 /// When summarization is off or the lock fails, returns an empty string (indexing still succeeds).
 fn summarize_if_enabled(
-    summarizer: &Option<Arc<Mutex<Summarizer>>>,
+    summarizer: &Option<Arc<Mutex<inkly_summarize::Summarizer>>>,
     content: &str,
     op: &'static str,
 ) -> String {
@@ -124,43 +160,53 @@ fn summarize_if_enabled(
     };
     let mut summary = String::new();
     match sm.lock() {
-        Ok(mut guard) => {
-            if let Err(e) = guard.summarize(content).map(|s| summary = s) {
-                warn!(error = %e, op = op, "summarizer failed");
-            }
-        }
-        Err(_) => warn!(op = op, "summarizer lock poisoned"),
+        Ok(mut guard) => match guard.summarize(content) {
+            Ok(s) => summary = s,
+            Err(e) => warn!(error = %e, op, "summarizer failed"),
+        },
+        Err(_) => warn!(op, "summarizer lock poisoned"),
     }
     summary
 }
 
-pub async fn index_document(
-    State(state): State<Arc<AppState>>,
-    Extension(user): Extension<AuthUser>,
-    Json(mut input): Json<DocumentIn>,
-) -> Result<Json<IndexResponse>, ApiError> {
-    input.path = normalize_dir_path(&input.path)?;
-    validate_document(&input)?;
+// ---------------------------------------------------------------------------
+// Shared indexing logic
+// ---------------------------------------------------------------------------
 
+/// Core blocking work shared by `index_document` and `index_document_upload`.
+/// Callers are responsible for normalizing and validating `input` before calling this.
+async fn perform_index_document(
+    state: Arc<AppState>,
+    user: AuthUser,
+    input: DocumentIn,
+    op: &'static str,
+) -> Result<Json<IndexResponse>, ApiError> {
     let tenant_id = user.tenant_id;
     let want_auto_id = use_automatic_doc_id(input.doc_id);
     let requested_doc_id = input.doc_id;
-    let title = input.title;
-    let content = input.content;
-    let doc_url = input.doc_url;
-    let tags = input.tags;
-    let path = input.path;
-    let note = input.note;
-    let index = state.index.clone();
-    let summarizer = state.summarizer.clone();
 
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
         ?requested_doc_id,
         want_auto_id,
+        op,
         "index_document"
     );
+
+    let index = state.index.clone();
+    let summarizer = state.summarizer.clone();
+    let content = input.content;
+    let doc = DocumentRow {
+        doc_id: 0, // placeholder; assigned inside spawn_blocking
+        title: input.title,
+        content: content.clone(),
+        doc_url: input.doc_url,
+        summary: String::new(), // computed inside spawn_blocking
+        tags: input.tags,
+        path: input.path,
+        note: input.note,
+    };
 
     let (stats, assigned_doc_id) = tokio::task::spawn_blocking(move || {
         let doc_id = if want_auto_id {
@@ -169,19 +215,14 @@ pub async fn index_document(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
-
-        let summary = summarize_if_enabled(&summarizer, &content, "index_document");
-
+        let summary = summarize_if_enabled(&summarizer, &content, op);
         let stats = index.index_document(
             &tenant_id,
-            doc_id,
-            &title,
-            &content,
-            &summary,
-            &doc_url,
-            &tags,
-            &path,
-            &note,
+            DocumentRow {
+                doc_id,
+                summary,
+                ..doc
+            },
         )?;
         Ok::<_, SearchError>((stats, assigned))
     })
@@ -196,9 +237,24 @@ pub async fn index_document(
     }))
 }
 
-/// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`), e.g. plain text, Markdown, or HTML.
+// ---------------------------------------------------------------------------
+// Route handlers
+// ---------------------------------------------------------------------------
+
+pub async fn index_document(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
+    Json(mut input): Json<DocumentIn>,
+) -> Result<Json<IndexResponse>, ApiError> {
+    input.path = normalize_dir_path(&input.path)?;
+    validate_document(&input)?;
+    perform_index_document(state, user, input, "index_document").await
+}
+
+/// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`).
 ///
-/// Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned), `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
+/// Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned),
+/// `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
 pub async fn index_document_upload(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
@@ -213,7 +269,7 @@ pub async fn index_document_upload(
     let mut tags_raw = String::new();
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
-        tracing::warn!(error = %e, "multipart field read failed");
+        warn!(error = %e, "multipart field read failed");
         ApiError::bad_request("invalid multipart body")
     })? {
         let name = field.name().unwrap_or("").to_string();
@@ -223,7 +279,7 @@ pub async fn index_document_upload(
                     return Err(ApiError::bad_request("duplicate file field"));
                 }
                 let bytes = field.bytes().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart file bytes read failed");
+                    warn!(error = %e, "multipart file bytes read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
                 file_bytes = Some(bytes.to_vec());
@@ -233,38 +289,38 @@ pub async fn index_document_upload(
                     return Err(ApiError::bad_request("duplicate doc_id field"));
                 }
                 let t = field.text().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart doc_id read failed");
+                    warn!(error = %e, "multipart doc_id read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
                 doc_id_raw = Some(t);
             }
             "title" => {
                 title = field.text().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart title read failed");
+                    warn!(error = %e, "multipart title read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
             }
             "doc_url" => {
                 doc_url = field.text().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart doc_url read failed");
+                    warn!(error = %e, "multipart doc_url read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
             }
             "path" => {
                 path = field.text().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart path read failed");
+                    warn!(error = %e, "multipart path read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
             }
             "note" => {
                 note = field.text().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart note read failed");
+                    warn!(error = %e, "multipart note read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
             }
             "tags" => {
                 tags_raw = field.text().await.map_err(|e| {
-                    tracing::warn!(error = %e, "multipart tags read failed");
+                    warn!(error = %e, "multipart tags read failed");
                     ApiError::bad_request("invalid multipart body")
                 })?;
             }
@@ -273,7 +329,8 @@ pub async fn index_document_upload(
     }
 
     let bytes = file_bytes.ok_or_else(|| ApiError::bad_request("missing file"))?;
-    let content = String::from_utf8(bytes).map_err(|_| ApiError::bad_request("file must be utf-8"))?;
+    let content =
+        String::from_utf8(bytes).map_err(|_| ApiError::bad_request("file must be utf-8"))?;
 
     let doc_id = match doc_id_raw.as_deref().map(str::trim) {
         None | Some("") => None,
@@ -304,58 +361,7 @@ pub async fn index_document_upload(
     input.path = normalize_dir_path(&input.path)?;
     validate_document(&input)?;
 
-    let tenant_id = user.tenant_id;
-    let want_auto_id = use_automatic_doc_id(input.doc_id);
-    let requested_doc_id = input.doc_id;
-    let title = input.title;
-    let content = input.content;
-    let doc_url = input.doc_url;
-    let tags = input.tags;
-    let path = input.path;
-    let note = input.note;
-    let index = state.index.clone();
-    let summarizer = state.summarizer.clone();
-
-    info!(
-        tenant_id = %tenant_id,
-        user_id = %user.user_id,
-        ?requested_doc_id,
-        want_auto_id,
-        "index_document_upload"
-    );
-
-    let (stats, assigned_doc_id) = tokio::task::spawn_blocking(move || {
-        let doc_id = if want_auto_id {
-            index.allocate_doc_id()?
-        } else {
-            requested_doc_id.unwrap_or(0)
-        };
-        let assigned = want_auto_id.then_some(doc_id);
-
-        let summary = summarize_if_enabled(&summarizer, &content, "index_document_upload");
-
-        let stats = index.index_document(
-            &tenant_id,
-            doc_id,
-            &title,
-            &content,
-            &summary,
-            &doc_url,
-            &tags,
-            &path,
-            &note,
-        )?;
-        Ok::<_, SearchError>((stats, assigned))
-    })
-    .await
-    .map_err(|_| ApiError::Internal)??;
-
-    Ok(Json(IndexResponse {
-        indexed: stats.indexed,
-        deleted: stats.deleted,
-        doc_id: assigned_doc_id,
-        doc_ids: Vec::new(),
-    }))
+    perform_index_document(state, user, input, "index_document_upload").await
 }
 
 pub async fn index_documents_bulk(
@@ -380,14 +386,13 @@ pub async fn index_documents_bulk(
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
-        indexed_documents = documents.len(),
+        count = documents.len(),
         "index_documents_bulk"
     );
 
     let (stats, doc_ids) = tokio::task::spawn_blocking(move || {
-        let mut rows: Vec<(u64, String, String, String, Vec<String>, String, String, String)> =
-            Vec::with_capacity(documents.len());
-        let mut ids = Vec::with_capacity(documents.len());
+        let mut rows: Vec<DocumentRow> = Vec::with_capacity(documents.len());
+        let mut ids: Vec<u64> = Vec::with_capacity(documents.len());
         for d in documents {
             let doc_id = if use_automatic_doc_id(d.doc_id) {
                 index.allocate_doc_id()?
@@ -396,16 +401,16 @@ pub async fn index_documents_bulk(
             };
             ids.push(doc_id);
             let summary = summarize_if_enabled(&summarizer, &d.content, "index_documents_bulk");
-            rows.push((
+            rows.push(DocumentRow {
                 doc_id,
-                d.title,
-                d.content,
-                d.doc_url,
-                d.tags,
-                d.path,
-                d.note,
+                title: d.title,
+                content: d.content,
+                doc_url: d.doc_url,
                 summary,
-            ));
+                tags: d.tags,
+                path: d.path,
+                note: d.note,
+            });
         }
         let stats = index.index_documents(&tenant_id, rows)?;
         Ok::<_, SearchError>((stats, ids))
@@ -459,29 +464,28 @@ pub async fn search(
 
     let q_trimmed = q.trim().to_string();
     if q_trimmed.is_empty() && path_filter.is_none() && tag_filters.is_empty() {
-        return Err(ApiError::bad_request("search text or folder/tag filters required"));
+        return Err(ApiError::bad_request(
+            "search text or folder/tag filters required",
+        ));
     }
 
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
         query = %q_trimmed,
-        limit = limit,
+        limit,
         path = ?path_filter,
         tag_filters = ?tag_filters,
         "search"
     );
-
-    let path_owned = path_filter.clone();
-    let tags_owned = tag_filters.clone();
 
     let (total_hits, items) = tokio::task::spawn_blocking(move || {
         index.search(
             &tenant_id,
             &q_trimmed,
             limit,
-            path_owned.as_deref(),
-            &tags_owned,
+            path_filter.as_deref(),
+            &tag_filters,
         )
     })
     .await
@@ -491,26 +495,9 @@ pub async fn search(
         _ => ApiError::Internal,
     })?;
 
-    let results = items
-        .into_iter()
-        .map(|it| SearchResult {
-            doc_id: it.doc_id,
-            title: it.title,
-            doc_url: it.doc_url,
-            snippet: it.snippet,
-            summary: it.summary,
-            score: it.score,
-            created_at: it.created_at,
-            updated_at: it.updated_at,
-            tags: it.tags,
-            path: it.path,
-            note: it.note,
-        })
-        .collect();
-
     Ok(Json(SearchResponse {
         total_hits,
-        results,
+        results: items.into_iter().map(into_search_result).collect(),
     }))
 }
 
@@ -564,7 +551,7 @@ pub async fn get_document(
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
-        doc_id = doc_id,
+        doc_id,
         "get_document"
     );
 
@@ -573,19 +560,7 @@ pub async fn get_document(
         .map_err(|_| ApiError::Internal)??;
 
     let d = doc.ok_or(ApiError::NotFound)?;
-
-    Ok(Json(DocumentDetailResponse {
-        doc_id: d.doc_id,
-        title: d.title,
-        content: d.content,
-        summary: d.summary,
-        doc_url: d.doc_url,
-        path: d.path,
-        note: d.note,
-        tags: d.tags,
-        created_at: d.created_at,
-        updated_at: d.updated_at,
-    }))
+    Ok(Json(into_document_detail(d)))
 }
 
 pub async fn delete_document(
@@ -603,7 +578,7 @@ pub async fn delete_document(
     info!(
         tenant_id = %tenant_id,
         user_id = %user.user_id,
-        doc_id = doc_id,
+        doc_id,
         "delete_document"
     );
 
@@ -618,4 +593,3 @@ pub async fn delete_document(
 
     Ok(StatusCode::NO_CONTENT)
 }
-

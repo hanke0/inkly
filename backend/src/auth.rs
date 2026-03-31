@@ -40,7 +40,6 @@ pub async fn auth_middleware(
 
     let (username, password) = creds
         .split_once(':')
-        .map(|(u, p)| (u, p))
         .unwrap_or((creds.as_str(), ""));
 
     if !basic_credentials_match(
