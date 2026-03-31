@@ -3,12 +3,12 @@ mod cli;
 mod config;
 mod error;
 mod routes;
-mod static_assets;
 mod state;
+mod static_assets;
 
+use axum::Router;
 use axum::http::{HeaderValue, Method};
 use axum::routing::{get, post};
-use axum::Router;
 use clap::Parser;
 use inkly_search::IndexManager;
 use inkly_summarize::{Summarizer, SummarizerConfig};
@@ -31,9 +31,7 @@ fn build_cors_layer(config: &config::Config) -> Result<CorsLayer, String> {
 
     let mut origins = Vec::with_capacity(config.cors_origins.len());
     for o in &config.cors_origins {
-        origins.push(
-            HeaderValue::from_str(o).map_err(|_| format!("invalid CORS origin: {o}"))?,
-        );
+        origins.push(HeaderValue::from_str(o).map_err(|_| format!("invalid CORS origin: {o}"))?);
     }
 
     if origins.is_empty() {
@@ -62,14 +60,9 @@ fn main() {
             cpu,
             hf_cache,
         } => {
-            dotenvy::dotenv().ok();
-            if let Err(e) = cli::run_summary_bench(
-                text,
-                max_article_chars,
-                runs,
-                cpu,
-                hf_cache,
-            ) {
+            dotenvy::dotenv().unwrap();
+            tracing_subscriber::fmt().init();
+            if let Err(e) = cli::run_summary_bench(text, max_article_chars, runs, cpu, hf_cache) {
                 eprintln!("summary-bench: {e}");
                 std::process::exit(1);
             }
@@ -78,7 +71,7 @@ fn main() {
 }
 
 async fn run_server() {
-    dotenvy::dotenv().ok();
+    dotenvy::dotenv().unwrap();
     tracing_subscriber::fmt().init();
 
     let config = match config::Config::from_env() {

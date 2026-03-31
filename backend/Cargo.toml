@@ -5,12 +5,9 @@ edition = "2024"
 
 [features]
 default = []
-# Candle on NVIDIA (Linux / Windows). Requires CUDA toolkit (`nvcc` in PATH).
 cuda = ["inkly-summarize/cuda"]
-# Candle on Apple Silicon / macOS GPU. Requires Xcode toolchain.
 metal = ["inkly-summarize/metal"]
-accelerate = ["inkly-summarize/accelerate"]
-mkl = ["inkly-summarize/mkl"]
+vulkan = ["inkly-summarize/vulkan"]
 
 [dependencies]
 axum = { version = "0.8.8", features = ["macros", "multipart"] }

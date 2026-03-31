@@ -21,6 +21,7 @@ use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::{AddBos, LlamaModel};
 use llama_cpp_2::sampling::LlamaSampler;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tracing::instrument;
@@ -65,7 +66,7 @@ impl Default for SummarizerConfig {
             gguf_path: None,
             hf_hub_cache_dir: None,
             prefer_gpu: true,
-            max_article_chars: 3_072,
+            max_article_chars: 6_144,
             temperature: 0.0,
             top_p: None,
             top_k: None,
@@ -174,21 +175,19 @@ impl Summarizer {
         if plain.trim().is_empty() {
             return Err(SummarizeError::EmptyArticle);
         }
-        let (body, truncated) = clamp_chars(&plain, self.config.max_article_chars);
-        let user = build_user_message(&body, truncated);
+        let (body, _truncated) = clamp_chars(&plain, self.config.max_article_chars);
+        let user = build_user_message(&body);
         let prompt = format_chat_prompt(&user);
+        tracing::info!(prompt = %prompt, "summarize prompt");
         let prompt_tokens = self
             .model
             .str_to_token(&prompt, AddBos::Never)
             .map_err(|e| SummarizeError::Llama(e.to_string()))?;
         let prompt_token_count = prompt_tokens.len();
+        let n_len = (prompt_token_count + INTERNAL_MAX_NEW_TOKENS) as i32;
 
-        // n_batch must be >= the number of tokens submitted in a single decode call.
-        // n_ctx must cover prompt + all generated tokens so the KV cache is large enough.
         let n_batch = (prompt_token_count as u32).max(512);
-        let n_ctx = std::num::NonZeroU32::new(
-            (prompt_token_count as u32 + INTERNAL_MAX_NEW_TOKENS as u32).max(n_batch),
-        );
+        let n_ctx = std::num::NonZeroU32::new(n_batch.max(n_len as u32));
         let mut ctx_params = LlamaContextParams::default()
             .with_n_batch(n_batch)
             .with_n_ctx(n_ctx);
@@ -200,51 +199,65 @@ impl Summarizer {
             .new_context(&self.backend, ctx_params)
             .map_err(|e| SummarizeError::Llama(e.to_string()))?;
 
+        // --- prefill: feed all prompt tokens in one batch ---
         let prefill_start = Instant::now();
-        let mut batch = LlamaBatch::new(prompt_tokens.len().max(1), 1);
-        batch
-            .add_sequence(&prompt_tokens, 0, false)
-            .map_err(|e| SummarizeError::Llama(e.to_string()))?;
+        let mut batch = LlamaBatch::new(prompt_token_count.max(512), 1);
+        let last_index = (prompt_token_count as i32) - 1;
+        for (i, token) in (0_i32..).zip(prompt_tokens.into_iter()) {
+            batch
+                .add(token, i, &[0], i == last_index)
+                .map_err(|e| SummarizeError::Llama(e.to_string()))?;
+        }
         ctx.decode(&mut batch)
             .map_err(|e| SummarizeError::Llama(e.to_string()))?;
         let prefill = prefill_start.elapsed();
 
+        // --- decode loop ---
+        let mut n_cur = batch.n_tokens();
+        let mut decoder = encoding_rs::UTF_8.new_decoder();
+        let mut sampler = build_sampler(&self.config);
         let mut text = String::new();
         let mut generated_tokens = 0usize;
         let decode_start = Instant::now();
-        let mut sampler = build_sampler(&self.config);
-        sampler.accept_many(prompt_tokens.iter());
-        let mut pos = prompt_token_count as u32;
-        for _ in 0..INTERNAL_MAX_NEW_TOKENS {
-            let token = sampler.sample(&ctx, -1);
+
+        while n_cur < n_len {
+            let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+            sampler.accept(token);
+
             if self.model.is_eog_token(token) {
                 break;
             }
-            let bytes = self
+
+            let piece = self
                 .model
-                .token_to_piece_bytes(token, 32, true, None)
+                .token_to_piece(token, &mut decoder, true, None)
                 .map_err(|e| SummarizeError::Llama(e.to_string()))?;
-            let piece = String::from_utf8_lossy(&bytes).into_owned();
             text.push_str(&piece);
             generated_tokens += 1;
+
             if text.contains("<|im_end|>") || text.contains("</s>") {
+                text = text.replace("<|im_end|>", "").replace("</s>", "");
                 break;
             }
-            let mut step = LlamaBatch::new(1, 1);
-            step.add(token, pos as i32, &[0], true)
+
+            batch.clear();
+            batch
+                .add(token, n_cur, &[0], true)
                 .map_err(|e| SummarizeError::Llama(e.to_string()))?;
-            ctx.decode(&mut step)
+
+            ctx.decode(&mut batch)
                 .map_err(|e| SummarizeError::Llama(e.to_string()))?;
-            sampler.accept(token);
-            pos = pos.saturating_add(1);
+
+            n_cur += 1;
         }
+
         let decode = decode_start.elapsed();
-        let decode_phase_tokens = generated_tokens;
+        std::io::stderr().flush().ok();
 
         let bench = with_benchmark.then_some(SummarizeBenchmark {
             prompt_tokens: prompt_token_count,
             generated_tokens,
-            decode_phase_tokens,
+            decode_phase_tokens: generated_tokens,
             prefill,
             decode,
         });
@@ -306,9 +319,123 @@ fn looks_like_html(s: &str) -> bool {
 }
 
 fn html_to_plain(html: &str) -> String {
-    html2text::config::plain()
+    let raw = html2text::config::plain()
         .string_from_read(html.as_bytes(), 200)
-        .unwrap_or_default()
+        .unwrap_or_default();
+    clean_converted_text(&raw)
+}
+
+/// Post-process html2text output: strip reference-link markers, navigation noise, collapse blanks.
+fn clean_converted_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for line in s.lines() {
+        let trimmed = line.trim();
+        // Drop pure reference-link definition lines like `[42]: https://...`
+        if trimmed.starts_with('[') {
+            if let Some(rest) = trimmed.strip_prefix('[') {
+                if let Some((_num, after)) = rest.split_once(']') {
+                    if after.starts_with(": ") {
+                        continue;
+                    }
+                }
+            }
+        }
+        // Drop short nav-style bullet items (e.g. `* Home`, `* RSS`, `* About`)
+        if let Some(rest) = trimmed.strip_prefix("* ") {
+            if rest.len() < 30 && !rest.contains(". ") && !rest.contains('，') && !rest.contains('。') {
+                continue;
+            }
+        }
+        // Drop bare "TOC", "Index", "Table of Contents" header lines
+        let lower = trimmed.to_ascii_lowercase();
+        if lower == "toc"
+            || lower == "index"
+            || lower == "table of contents"
+            || lower == "目录"
+            || lower == "### index"
+            || lower == "## index"
+            || lower == "### toc"
+            || lower == "## toc"
+        {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    // Strip inline reference markers: `[text][42]` → `text`
+    let mut result = String::with_capacity(out.len());
+    let mut chars = out.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '[' {
+            let mut inner = String::new();
+            let mut depth = 1u32;
+            let mut found_close = false;
+            for c in chars.by_ref() {
+                if c == '[' {
+                    depth += 1;
+                } else if c == ']' {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_close = true;
+                        break;
+                    }
+                }
+                inner.push(c);
+            }
+            if !found_close {
+                result.push('[');
+                result.push_str(&inner);
+                continue;
+            }
+            // Check for a trailing `[num]` reference tag
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                let mut tag = String::new();
+                let mut tag_closed = false;
+                for c in chars.by_ref() {
+                    if c == ']' {
+                        tag_closed = true;
+                        break;
+                    }
+                    tag.push(c);
+                }
+                if tag_closed && tag.chars().all(|c| c.is_ascii_digit()) {
+                    // `[inner][42]` → emit just inner
+                    result.push_str(&inner);
+                } else {
+                    // Not a reference tag, reconstruct
+                    result.push('[');
+                    result.push_str(&inner);
+                    result.push_str("][");
+                    result.push_str(&tag);
+                    if tag_closed {
+                        result.push(']');
+                    }
+                }
+            } else {
+                result.push('[');
+                result.push_str(&inner);
+                result.push(']');
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    // Collapse 3+ consecutive newlines into 2
+    let mut final_out = String::with_capacity(result.len());
+    let mut newline_run = 0u32;
+    for ch in result.chars() {
+        if ch == '\n' {
+            newline_run += 1;
+            if newline_run <= 2 {
+                final_out.push(ch);
+            }
+        } else {
+            newline_run = 0;
+            final_out.push(ch);
+        }
+    }
+    final_out.trim().to_string()
 }
 
 fn clamp_chars(s: &str, max: usize) -> (String, bool) {
@@ -324,19 +451,21 @@ fn build_sampler(config: &SummarizerConfig) -> LlamaSampler {
         return LlamaSampler::greedy();
     }
 
-    let mut samplers = vec![LlamaSampler::temp(config.temperature as f32)];
-    if let Some(k) = config.top_k {
-        samplers.push(LlamaSampler::top_k(k as i32));
-    }
-    if let Some(p) = config.top_p {
-        samplers.push(LlamaSampler::top_p(p as f32, 1));
-    }
+    let mut samplers = Vec::new();
+    // Penalties first: applied to raw logits before any filtering.
     samplers.push(LlamaSampler::penalties(
         config.repeat_last_n as i32,
         config.repeat_penalty,
         0.0,
         0.0,
     ));
+    if let Some(k) = config.top_k {
+        samplers.push(LlamaSampler::top_k(k as i32));
+    }
+    if let Some(p) = config.top_p {
+        samplers.push(LlamaSampler::top_p(p as f32, 1));
+    }
+    samplers.push(LlamaSampler::temp(config.temperature as f32));
     samplers.push(LlamaSampler::dist(config.seed as u32));
     LlamaSampler::chain_simple(samplers)
 }

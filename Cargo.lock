@@ -1245,6 +1245,7 @@ dependencies = [
 name = "inkly-summarize"
 version = "0.1.0"
 dependencies = [
+ "encoding_rs",
  "hf-hub",
  "html2text",
  "llama-cpp-2",

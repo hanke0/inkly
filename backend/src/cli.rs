@@ -107,8 +107,7 @@ pub fn run_summary_bench(
         );
 
         if i == 0 {
-            let preview: String = summary.chars().take(160).collect();
-            println!("  summary_preview: {preview}");
+            println!("  summary_preview: {summary}");
         }
     }
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+encoding_rs = "0.8"
 hf-hub = "0.4"
 html2text = "0.16"
 llama-cpp-2 = "0.1.141"
@@ -13,7 +14,5 @@ tracing = "0.1"
 [features]
 default = []
 cuda = ["llama-cpp-2/cuda"]
-metal = []
-vulkan = []
-accelerate = []
-mkl = []
+metal = ["llama-cpp-2/metal"]
+vulkan = ["llama-cpp-2/vulkan"]
