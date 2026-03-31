@@ -54,7 +54,7 @@ fn main() {
                 .block_on(run_server());
         }
         Commands::SummaryBench {
-            text,
+            file,
             max_article_chars,
             runs,
             cpu,
@@ -62,7 +62,7 @@ fn main() {
         } => {
             dotenvy::dotenv().unwrap();
             tracing_subscriber::fmt().init();
-            if let Err(e) = cli::run_summary_bench(text, max_article_chars, runs, cpu, hf_cache) {
+            if let Err(e) = cli::run_summary_bench(file, max_article_chars, runs, cpu, hf_cache) {
                 eprintln!("summary-bench: {e}");
                 std::process::exit(1);
             }

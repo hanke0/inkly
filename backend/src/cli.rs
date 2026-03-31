@@ -21,9 +21,9 @@ pub enum Commands {
     Serve,
     /// Load the summarizer and print token timing (prefill vs decode throughput).
     SummaryBench {
-        /// Article body to summarize (default: built-in English sample).
+        /// Path to a file whose contents will be used as the article (default: built-in English sample).
         #[arg(long)]
-        text: Option<String>,
+        file: Option<PathBuf>,
         /// Cap article length (Unicode chars); prefill cost scales roughly with the square of token count on CPU.
         #[arg(long)]
         max_article_chars: Option<usize>,
@@ -46,7 +46,7 @@ pub fn data_dir() -> PathBuf {
 }
 
 pub fn run_summary_bench(
-    text: Option<String>,
+    file: Option<PathBuf>,
     max_article_chars: Option<usize>,
     runs: u32,
     cpu: bool,
@@ -73,7 +73,11 @@ pub fn run_summary_bench(
     eprintln!("Loading summarizer (first run may download weights)...");
     let mut summarizer = Summarizer::load(cfg).map_err(|e| e.to_string())?;
 
-    let article = text.unwrap_or_else(|| DEFAULT_BENCH_TEXT.to_string());
+    let article = match file {
+        Some(p) => std::fs::read_to_string(&p)
+            .map_err(|e| format!("read {}: {e}", p.display()))?,
+        None => DEFAULT_BENCH_TEXT.to_string(),
+    };
     let runs = runs.max(1);
 
     let mut prefill_ms = 0.0f64;
