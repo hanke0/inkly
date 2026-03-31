@@ -199,18 +199,35 @@ export default function DocumentView() {
                   </>
                 ) : null}
               </div>
+              {doc.summary ? (
+                <div className="mt-3 shrink-0">
+                  <details className="group" open>
+                    <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
+                      <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
+                        Summary
+                      </span>
+                      <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
+                    </summary>
+                    <div className="inkly-reading__note mt-2 border-l-2 border-inkly-accent/40 pl-3">
+                      {doc.summary}
+                    </div>
+                  </details>
+                </div>
+              ) : null}
               {doc.note ? (
-                <details className="mt-3 shrink-0 group">
-                  <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
-                    <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
-                      Note
-                    </span>
-                    <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
-                  </summary>
-                  <div className="inkly-reading__note mt-2 border-l-2 border-inkly-line pl-3">
-                    {doc.note}
-                  </div>
-                </details>
+                <div className="mt-3 shrink-0">
+                  <details className="group" open={htmlReading || undefined}>
+                    <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
+                      <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
+                        Note
+                      </span>
+                      <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
+                    </summary>
+                    <div className="inkly-reading__note mt-2 border-l-2 border-inkly-line pl-3">
+                      {doc.note}
+                    </div>
+                  </details>
+                </div>
               ) : null}
               <DocumentBody content={doc.content} />
             </article>

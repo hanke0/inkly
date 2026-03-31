@@ -36,6 +36,7 @@ export type SearchResult = {
   title: string;
   doc_url: string;
   snippet: string;
+  summary: string;
   score: number;
   created_at: number;
   updated_at: number;
@@ -73,6 +74,7 @@ export type DocumentDetailResponse = {
   doc_id: number;
   title: string;
   content: string;
+  summary: string;
   doc_url: string;
   path: string;
   note: string;
