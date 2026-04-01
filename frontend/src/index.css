@@ -418,5 +418,14 @@ body {
     overflow-wrap: break-word;
     white-space: pre-wrap;
   }
+
+  .inkly-reading__meta {
+    @apply font-inkly-read lining-nums text-inkly-ink-soft/85;
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+  }
 }
 

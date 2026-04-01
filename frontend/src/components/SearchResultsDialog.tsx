@@ -98,9 +98,11 @@ export function SearchResultsDialog({
                 </div>
                 <p className="mt-2 text-sm leading-relaxed text-inkly-muted">{r.snippet}</p>
                 {r.summary ? (
-                  <p className="mt-1.5 border-l-2 border-inkly-accent/40 pl-2 text-xs leading-relaxed text-inkly-muted/80">
-                    {r.summary}
-                  </p>
+                  <div className="mt-2 rounded border border-inkly-accent/10 border-l-[2.5px] border-l-inkly-accent/35 bg-inkly-accent/[0.03] px-2.5 py-1.5">
+                    <p className="text-xs leading-relaxed text-inkly-muted/80">
+                      {r.summary}
+                    </p>
+                  </div>
                 ) : null}
                 <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1 text-[11px] leading-tight text-inkly-faint">
                   <span className="min-w-0 truncate font-mono" title={r.path}>

@@ -40,6 +40,7 @@ export default function DocumentView() {
   const [doc, setDoc] = useState<DocumentDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [openPanel, setOpenPanel] = useState<"summary" | "note" | null>(null);
 
   useEffect(() => {
     if (!Number.isFinite(docId) || docId < 1) {
@@ -51,6 +52,7 @@ export default function DocumentView() {
     let cancelled = false;
     setLoading(true);
     setError("");
+    setOpenPanel(null);
     fetchDocument(docId)
       .then((d) => {
         if (!cancelled) {
@@ -199,34 +201,67 @@ export default function DocumentView() {
                   </>
                 ) : null}
               </div>
-              {doc.summary ? (
-                <div className="mt-3 shrink-0">
-                  <details className="group" open>
-                    <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
-                      <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
+              {doc.summary || doc.note ? (
+                <div className="relative mt-2 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    {doc.summary ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenPanel((p) => (p === "summary" ? null : "summary"))}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-[3px] text-[11px] font-medium transition-colors ${
+                          openPanel === "summary"
+                            ? "border-inkly-accent/30 bg-inkly-accent/10 text-inkly-accent"
+                            : "border-inkly-border/60 bg-white/80 text-inkly-muted hover:border-inkly-accent/25 hover:text-inkly-accent/80"
+                        }`}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+                          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
                         Summary
-                      </span>
-                      <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
-                    </summary>
-                    <div className="inkly-reading__note mt-2 border-l-2 border-inkly-accent/40 pl-3">
-                      {doc.summary}
-                    </div>
-                  </details>
-                </div>
-              ) : null}
-              {doc.note ? (
-                <div className="mt-3 shrink-0">
-                  <details className="group" open={htmlReading || undefined}>
-                    <summary className="cursor-pointer list-none text-[11px] text-inkly-muted marker:content-none [&::-webkit-details-marker]:hidden hover:text-inkly-ink-soft">
-                      <span className="underline decoration-inkly-line decoration-dotted underline-offset-2 group-open:no-underline">
+                      </button>
+                    ) : null}
+                    {doc.note ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenPanel((p) => (p === "note" ? null : "note"))}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-[3px] text-[11px] font-medium transition-colors ${
+                          openPanel === "note"
+                            ? "border-inkly-line/50 bg-inkly-paper-warm text-inkly-ink-soft"
+                            : "border-inkly-border/60 bg-white/80 text-inkly-muted hover:border-inkly-line/40 hover:text-inkly-ink-soft"
+                        }`}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
                         Note
-                      </span>
-                      <span className="ml-1 text-inkly-faint group-open:hidden">(click to show)</span>
-                    </summary>
-                    <div className="inkly-reading__note mt-2 border-l-2 border-inkly-line pl-3">
-                      {doc.note}
-                    </div>
-                  </details>
+                      </button>
+                    ) : null}
+                  </div>
+                  {openPanel != null ? (
+                    <>
+                      <div className="fixed inset-0 z-[9]" onClick={() => setOpenPanel(null)} />
+                      <div
+                        className={`absolute left-0 right-0 z-10 mt-1.5 max-h-[18rem] overflow-y-auto rounded-lg border px-4 py-3 shadow-lg shadow-inkly-ink/[0.06] ${
+                          openPanel === "summary"
+                            ? "border-inkly-accent/20 bg-inkly-paper"
+                            : "border-inkly-border/50 bg-inkly-paper"
+                        }`}
+                      >
+                        <p
+                          className={`mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider ${
+                            openPanel === "summary" ? "text-inkly-accent/70" : "text-inkly-muted/60"
+                          }`}
+                        >
+                          {openPanel === "summary" ? "Summary" : "Note"}
+                        </p>
+                        <div className="inkly-reading__meta">
+                          {openPanel === "summary" ? doc.summary : doc.note}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               <DocumentBody content={doc.content} />
