@@ -13,6 +13,7 @@ type TiptapEditorProps = {
   onChange: (markdown: string) => void;
   placeholder?: string;
   editable?: boolean;
+  compact?: boolean;
 };
 
 function BubbleBtn({
@@ -54,6 +55,7 @@ export function TiptapEditor({
   onChange,
   placeholder = "Start writing…",
   editable = true,
+  compact = false,
 }: TiptapEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -80,7 +82,7 @@ export function TiptapEditor({
   if (!editor) return null;
 
   return (
-    <div className={`tiptap-root${editable ? "" : " tiptap-root--readonly"}`}>
+    <div className={`tiptap-root${editable ? "" : " tiptap-root--readonly"}${compact ? " tiptap-root--compact" : ""}`}>
       {editable && <BubbleMenu editor={editor}>
         <div className="flex items-center gap-0.5 rounded-lg bg-[#1b1b18]/95 px-1.5 py-1 shadow-xl ring-1 ring-white/10 backdrop-blur-sm">
           <BubbleBtn

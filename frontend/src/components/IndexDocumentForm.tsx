@@ -336,15 +336,12 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 </div>
               </div>
               <div>
-                <label htmlFor="idx-note" className={labelCls}>
-                  Note
-                </label>
-                <textarea
-                  id="idx-note"
-                  className={`${textareaCls} min-h-[2.75rem] resize-y`}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                <label className={labelCls}>Note</label>
+                <TiptapEditor
+                  initialContent={note}
+                  onChange={setNote}
                   placeholder="Optional"
+                  compact
                 />
               </div>
             </div>
@@ -405,15 +402,12 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
             </div>
           </div>
           <div>
-            <label htmlFor="idx-note" className={labelCls}>
-              Note
-            </label>
-            <textarea
-              id="idx-note"
-              className={`${textareaCls} min-h-[2.75rem] resize-y`}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
+            <label className={labelCls}>Note</label>
+            <TiptapEditor
+              initialContent={note}
+              onChange={setNote}
               placeholder="Optional"
+              compact
             />
           </div>
         </FormSection>
@@ -481,15 +475,12 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
               </div>
             </div>
             <div>
-              <label htmlFor="idx-note" className={labelCls}>
-                Note
-              </label>
-              <textarea
-                id="idx-note"
-                className={`${textareaCls} min-h-[2.75rem] resize-y`}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
+              <label className={labelCls}>Note</label>
+              <TiptapEditor
+                initialContent={note}
+                onChange={setNote}
                 placeholder="Optional"
+                compact
               />
             </div>
           </FormSection>
