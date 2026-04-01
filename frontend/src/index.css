@@ -162,12 +162,12 @@ body {
   }
 
   .inkly-reading__body--rich p {
-    margin: 0.65em 0;
+    margin: 1.25em 0;
   }
 
   .inkly-reading__body--rich ul,
   .inkly-reading__body--rich ol {
-    margin: 0.65em 0;
+    margin: 1.25em 0;
     padding-left: 1.35em;
   }
 
@@ -177,7 +177,7 @@ body {
 
   .inkly-reading__body--rich blockquote {
     @apply border-l-2 border-inkly-line text-inkly-muted;
-    margin: 0.85em 0;
+    margin: 1.25em 0;
     padding-left: 1rem;
   }
 
@@ -191,7 +191,7 @@ body {
 
   .inkly-reading__body--rich pre {
     @apply max-w-full overflow-x-auto rounded-md border border-inkly-border bg-inkly-sidebar p-3 font-mono text-[0.9em] text-inkly-ink;
-    margin: 0.85em 0;
+    margin: 1.25em 0;
     line-height: 1.55;
   }
 
@@ -206,7 +206,7 @@ body {
 
   .inkly-reading__body--rich table {
     @apply w-full border-collapse text-[0.95em];
-    margin: 0.85em 0;
+    margin: 1.25em 0;
   }
 
   .inkly-reading__body--rich th,
@@ -261,7 +261,7 @@ body {
     overflow-y: auto;
     min-height: 20rem;
     @apply font-inkly-read text-inkly-ink-soft;
-    font-size: 1rem;
+    font-size: 1.0625rem;
     line-height: 1.75;
   }
 
@@ -307,12 +307,12 @@ body {
   }
 
   .tiptap-root .tiptap p {
-    margin: 0.5em 0;
+    margin: 0.75em 0;
   }
 
   .tiptap-root .tiptap ul,
   .tiptap-root .tiptap ol {
-    margin: 0.5em 0;
+    margin: 0.75em 0;
     padding-left: 1.5em;
   }
 
@@ -430,7 +430,7 @@ body {
 
   .inkly-reading__meta {
     @apply font-inkly-read lining-nums text-inkly-ink-soft/85;
-    font-size: 0.9375rem;
+    font-size: 1rem;
     line-height: 1.7;
     word-break: break-word;
     overflow-wrap: break-word;

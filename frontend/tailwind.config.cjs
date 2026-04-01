@@ -50,7 +50,7 @@ module.exports = {
           ink: "#2a2620",
           "ink-soft": "#3d3830",
           muted: "#6b655a",
-          faint: "#8a8478",
+          faint: "#756e62",
           line: "#c4bdb0",
           border: "#c9c2b5",
           "border-soft": "#ddd6ca",
