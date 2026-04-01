@@ -112,7 +112,7 @@ export function CatalogSidebar({
           <p className="mb-0.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-faint">
             Folders
           </p>
-          <ul className="space-y-0">
+          <ul className="space-y-0.5">
             {catalog.subdirs.length === 0 ? (
               <li className="py-1 text-[11px] text-inkly-faint">—</li>
             ) : (
@@ -120,7 +120,7 @@ export function CatalogSidebar({
                 <li key={s.path}>
                   <button
                     type="button"
-                    className="w-full truncate rounded px-1 py-0.5 text-left text-xs text-inkly-ink-soft hover:bg-white/40 hover:text-inkly-ink"
+                    className="w-full truncate rounded px-1 py-1 text-left text-xs text-inkly-ink-soft hover:bg-white/40 hover:text-inkly-ink"
                     title={s.path}
                     onClick={() => onPathChange(s.path)}
                   >
@@ -134,7 +134,7 @@ export function CatalogSidebar({
           <p className="mb-0.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-faint">
             Pages
           </p>
-          <ul className="space-y-0">
+          <ul className="space-y-0.5">
             {catalog.files.length === 0 ? (
               <li className="py-1 text-[11px] text-inkly-faint">None</li>
             ) : (
@@ -146,8 +146,8 @@ export function CatalogSidebar({
                       to={docLink(f.doc_id, catalog.path)}
                       className={
                         active
-                          ? "block truncate rounded px-1 py-0.5 text-xs font-medium text-inkly-ink bg-white/55"
-                          : "block truncate rounded px-1 py-0.5 text-xs text-inkly-link hover:bg-white/40 hover:text-inkly-link-hover"
+                          ? "block truncate rounded px-1 py-1 text-xs font-medium text-inkly-ink bg-white/55"
+                          : "block truncate rounded px-1 py-1 text-xs text-inkly-link hover:bg-white/40 hover:text-inkly-link-hover"
                       }
                       title={f.title}
                     >
