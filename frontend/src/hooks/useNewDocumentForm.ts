@@ -15,6 +15,7 @@ export function useNewDocumentForm(
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
   const [editingDocId, setEditingDocId] = useState<number | null>(null);
+  const [contentMode, setContentMode] = useState<"upload" | "editor">("upload");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [contentFile, setContentFile] = useState<File | null>(null);
@@ -36,10 +37,20 @@ export function useNewDocumentForm(
     }
   }
 
+  function switchToEditor() {
+    clearFileInput();
+    setContentMode("editor");
+  }
+
+  function switchToUpload() {
+    setContentMode("upload");
+  }
+
   /** Call when opening the modal for a new document; optionally scope `path` to the current catalog folder. */
   function prepareOpen(options?: { path?: string }) {
     setFormError("");
     setEditingDocId(null);
+    setContentMode("upload");
     setTitle("");
     setContent("");
     clearFileInput();
@@ -54,6 +65,7 @@ export function useNewDocumentForm(
   function prepareEdit(d: DocumentDetailResponse) {
     setFormError("");
     setEditingDocId(d.doc_id);
+    setContentMode("editor");
     setTitle(d.title);
     setContent(d.content);
     clearFileInput();
@@ -77,6 +89,11 @@ export function useNewDocumentForm(
 
     try {
       let res: IndexResponse;
+      if (contentMode === "upload" && !contentFile) {
+        setFormError("Upload a file or switch to the editor to write content.");
+        setLoading(false);
+        return;
+      }
       if (contentFile) {
         const utf8File = await ensureUtf8File(contentFile);
         const fd = new FormData();
@@ -118,6 +135,9 @@ export function useNewDocumentForm(
   }
 
   return {
+    contentMode,
+    switchToEditor,
+    switchToUpload,
     title,
     setTitle,
     content,

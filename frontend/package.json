@@ -13,13 +13,22 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@tiptap/extension-bubble-menu": "^3.22.0",
+    "@tiptap/extension-highlight": "^3.22.0",
+    "@tiptap/extension-placeholder": "^3.22.0",
+    "@tiptap/extension-task-item": "^3.22.0",
+    "@tiptap/extension-task-list": "^3.22.0",
+    "@tiptap/pm": "^3.22.0",
+    "@tiptap/react": "^3.22.0",
+    "@tiptap/starter-kit": "^3.22.0",
     "chardet": "^2.1.1",
     "dompurify": "^3.3.3",
     "katex": "^0.16.44",
     "marked": "^17.0.5",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.2"
+    "react-router-dom": "^7.13.2",
+    "tiptap-markdown": "^0.9.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",

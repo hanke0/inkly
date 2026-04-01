@@ -241,6 +241,158 @@ body {
   }
 
   /** Sandboxed HTML document view — fills remaining height in flex column (DocumentView) */
+  /* ── Tiptap editor ────────────────────────────────── */
+  .tiptap-root {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    border-radius: 0.5rem;
+    border: 1px solid #c9c2b5;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+    overflow: hidden;
+  }
+
+  .tiptap-root .tiptap {
+    flex: 1;
+    padding: 1rem 1.25rem;
+    outline: none;
+    overflow-y: auto;
+    min-height: 20rem;
+    @apply font-inkly-read text-inkly-ink-soft;
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+
+  .tiptap-root .tiptap:focus {
+    outline: none;
+  }
+
+  .tiptap-root .tiptap > *:first-child {
+    margin-top: 0;
+  }
+
+  .tiptap-root .tiptap > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .tiptap-root .tiptap p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: #bdb8ae;
+    pointer-events: none;
+    height: 0;
+  }
+
+  .tiptap-root .tiptap h1,
+  .tiptap-root .tiptap h2,
+  .tiptap-root .tiptap h3 {
+    @apply font-inkly-read-ui font-semibold text-inkly-ink;
+    line-height: 1.35;
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+  }
+
+  .tiptap-root .tiptap h1 {
+    font-size: 1.5rem;
+  }
+
+  .tiptap-root .tiptap h2 {
+    font-size: 1.25rem;
+  }
+
+  .tiptap-root .tiptap h3 {
+    font-size: 1.1rem;
+  }
+
+  .tiptap-root .tiptap p {
+    margin: 0.5em 0;
+  }
+
+  .tiptap-root .tiptap ul,
+  .tiptap-root .tiptap ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+
+  .tiptap-root .tiptap ul {
+    list-style-type: disc;
+  }
+
+  .tiptap-root .tiptap ol {
+    list-style-type: decimal;
+  }
+
+  .tiptap-root .tiptap li {
+    margin: 0.2em 0;
+  }
+
+  .tiptap-root .tiptap blockquote {
+    border-left: 3px solid #c4bdb0;
+    margin: 0.75em 0;
+    padding-left: 1rem;
+    color: #8a8478;
+  }
+
+  .tiptap-root .tiptap code {
+    background: #f0ece4;
+    border-radius: 0.25rem;
+    padding: 0.15em 0.35em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+
+  .tiptap-root .tiptap pre {
+    background: #f0ece4;
+    border: 1px solid #d6d0c6;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    margin: 0.75em 0;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    line-height: 1.55;
+  }
+
+  .tiptap-root .tiptap pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .tiptap-root .tiptap hr {
+    border: none;
+    border-top: 1px solid #e5e0d8;
+    margin: 1.5em 0;
+  }
+
+  .tiptap-root .tiptap ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  .tiptap-root .tiptap ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .tiptap-root .tiptap ul[data-type="taskList"] li label {
+    flex-shrink: 0;
+    margin-top: 0.25em;
+  }
+
+  .tiptap-root .tiptap ul[data-type="taskList"] li > div {
+    flex: 1;
+  }
+
+  .tiptap-root .tiptap mark {
+    background-color: #fef08a;
+    border-radius: 0.15em;
+    padding: 0 0.1em;
+  }
+
   .inkly-reading__iframe-root {
     min-height: 0;
     min-width: 0;
