@@ -37,9 +37,7 @@ impl From<SearchError> for ApiError {
             }
             SearchError::StorageVersionMismatch { expected, found } => {
                 tracing::error!(expected, found, "storage data_version mismatch");
-                ApiError::BadRequest(format!(
-                    "storage data_version mismatch: expected {expected}, found {found}"
-                ))
+                ApiError::Internal
             }
             SearchError::LockPoisoned => {
                 tracing::error!("index layer mutex poisoned");

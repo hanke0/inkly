@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use inkly_summarize::{ModelSize, Summarizer, SummarizerConfig, INTERNAL_MAX_NEW_TOKENS};
 
+use crate::config;
+
 const DEFAULT_BENCH_TEXT: &str = "\
 Large language models are used for summarization, question answering, and many other text tasks. \
 They are trained on broad corpora and fine-tuned for helpful, safe responses. \
@@ -42,12 +44,6 @@ pub enum Commands {
     },
 }
 
-pub fn data_dir() -> PathBuf {
-    std::env::var("DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("./data"))
-}
-
 pub fn run_summary_bench(
     file: Option<PathBuf>,
     model: ModelSize,
@@ -56,7 +52,7 @@ pub fn run_summary_bench(
     cpu: bool,
     hf_cache: Option<PathBuf>,
 ) -> Result<(), String> {
-    let data_root = data_dir();
+    let data_root = config::data_dir();
     let cache = hf_cache.unwrap_or_else(|| data_root.join("huggingface").join("hub"));
     std::fs::create_dir_all(&cache).map_err(|e| format!("create hf cache dir: {e}"))?;
 

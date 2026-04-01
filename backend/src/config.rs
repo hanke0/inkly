@@ -1,8 +1,9 @@
+use std::fmt;
 use std::path::PathBuf;
 
 use inkly_summarize::ModelSize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Config {
     pub host: String,
     pub data_dir: PathBuf,
@@ -19,13 +20,33 @@ pub struct Config {
     pub summarize_model: ModelSize,
 }
 
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("host", &self.host)
+            .field("data_dir", &self.data_dir)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("max_body_bytes", &self.max_body_bytes)
+            .field("cors_permissive", &self.cors_permissive)
+            .field("cors_origins", &self.cors_origins)
+            .field("summarize_enabled", &self.summarize_enabled)
+            .field("summarize_model", &self.summarize_model)
+            .finish()
+    }
+}
+
+pub fn data_dir() -> PathBuf {
+    std::env::var("DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("./data"))
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
 
-        let data_dir = std::env::var("DATA_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("./data"));
+        let data_dir = data_dir();
 
         let username = std::env::var("USERNAME")
             .map_err(|_| "Missing USERNAME".to_string())?;

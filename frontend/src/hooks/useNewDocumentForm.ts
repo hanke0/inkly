@@ -115,6 +115,12 @@ export function useNewDocumentForm(
 
     const updateId = editingDocId;
 
+    if (!title.trim()) {
+      setFormError("Title is required.");
+      setLoading(false);
+      return;
+    }
+
     try {
       let res: IndexResponse;
       if (updateId != null) {
@@ -128,6 +134,11 @@ export function useNewDocumentForm(
         };
         res = await indexDocument(payload);
       } else if (contentFile) {
+        if (contentFile.size === 0) {
+          setFormError("The uploaded file is empty.");
+          setLoading(false);
+          return;
+        }
         const utf8File = await ensureUtf8File(contentFile);
         const fd = new FormData();
         fd.append("file", utf8File);

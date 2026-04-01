@@ -21,7 +21,7 @@ Output:
 pub fn format_chat_prompt(user_message: &str) -> String {
     let im_start = concat!("<|", "im_start", "|>");
     let im_end = concat!("<|", "im_end", "|>");
-    format!("{im_start}user\n{user_message}{im_end}\n{im_start}assistant\n")
+    format!("{im_start}user\n{user_message}/no_think{im_end}\n{im_start}assistant\n")
 }
 
 #[cfg(test)]

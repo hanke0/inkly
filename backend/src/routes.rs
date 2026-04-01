@@ -103,6 +103,9 @@ fn validate_tag_format(tag: &str) -> Result<(), ApiError> {
 }
 
 fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
+    if input.title.trim().is_empty() {
+        return Err(ApiError::bad_request("title is required"));
+    }
     validate_document_path(&input.path)?;
     for t in &input.tags {
         validate_tag_format(t)?;
@@ -143,6 +146,17 @@ fn into_document_detail(d: StoredDocument) -> DocumentDetailResponse {
         created_at: d.created_at,
         updated_at: d.updated_at,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Multipart helpers
+// ---------------------------------------------------------------------------
+
+async fn multipart_text(field: axum::extract::multipart::Field<'_>, name: &str) -> Result<String, ApiError> {
+    field.text().await.map_err(|e| {
+        warn!(error = %e, name, "multipart text read failed");
+        ApiError::bad_request("invalid multipart body")
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +215,9 @@ async fn perform_index_document(
         let c = input.content.ok_or_else(|| {
             ApiError::bad_request("content is required for new documents")
         })?;
+        if c.trim().is_empty() {
+            return Err(ApiError::bad_request("content must not be empty"));
+        }
         (c, None)
     } else {
         let existing_doc_id = requested_doc_id.unwrap_or(0);
@@ -305,42 +322,13 @@ pub async fn index_document_upload(
                 if doc_id_raw.is_some() {
                     return Err(ApiError::bad_request("duplicate doc_id field"));
                 }
-                let t = field.text().await.map_err(|e| {
-                    warn!(error = %e, "multipart doc_id read failed");
-                    ApiError::bad_request("invalid multipart body")
-                })?;
-                doc_id_raw = Some(t);
+                doc_id_raw = Some(multipart_text(field, "doc_id").await?);
             }
-            "title" => {
-                title = field.text().await.map_err(|e| {
-                    warn!(error = %e, "multipart title read failed");
-                    ApiError::bad_request("invalid multipart body")
-                })?;
-            }
-            "doc_url" => {
-                doc_url = field.text().await.map_err(|e| {
-                    warn!(error = %e, "multipart doc_url read failed");
-                    ApiError::bad_request("invalid multipart body")
-                })?;
-            }
-            "path" => {
-                path = field.text().await.map_err(|e| {
-                    warn!(error = %e, "multipart path read failed");
-                    ApiError::bad_request("invalid multipart body")
-                })?;
-            }
-            "note" => {
-                note = field.text().await.map_err(|e| {
-                    warn!(error = %e, "multipart note read failed");
-                    ApiError::bad_request("invalid multipart body")
-                })?;
-            }
-            "tags" => {
-                tags_raw = field.text().await.map_err(|e| {
-                    warn!(error = %e, "multipart tags read failed");
-                    ApiError::bad_request("invalid multipart body")
-                })?;
-            }
+            "title" => title = multipart_text(field, "title").await?,
+            "doc_url" => doc_url = multipart_text(field, "doc_url").await?,
+            "path" => path = multipart_text(field, "path").await?,
+            "note" => note = multipart_text(field, "note").await?,
+            "tags" => tags_raw = multipart_text(field, "tags").await?,
             _ => {}
         }
     }
@@ -421,7 +409,13 @@ pub async fn index_documents_bulk(
                 d.doc_id.unwrap_or(0)
             };
             let (content, existing_summary) = if want_auto {
-                (d.content.unwrap_or_default(), None)
+                let c = d.content.unwrap_or_default();
+                if c.trim().is_empty() {
+                    return Err(SearchError::InvalidInput(
+                        "content must not be empty".into(),
+                    ));
+                }
+                (c, None)
             } else {
                 let existing = index.get_document(&tenant_id, doc_id)?;
                 match existing {

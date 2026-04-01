@@ -338,10 +338,11 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         <>
           <div>
             <label htmlFor="idx-title" className={labelCls}>
-              Title
+              Title <span className="text-red-400">*</span>
             </label>
             <input
               id="idx-title"
+              required
               autoFocus
               className={inputCls}
               value={title}
@@ -419,10 +420,11 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         <FormSection>
           <div>
             <label htmlFor="idx-title" className={labelCls}>
-              Title
+              Title <span className="text-red-400">*</span>
             </label>
             <input
               id="idx-title"
+              required
               autoFocus
               className={inputCls}
               value={title}
@@ -476,10 +478,11 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           <FormSection>
             <div>
               <label htmlFor="idx-title" className={labelCls}>
-                Title
+                Title <span className="text-red-400">*</span>
               </label>
               <input
                 id="idx-title"
+                required
                 autoFocus
                 className={inputCls}
                 value={title}

@@ -61,7 +61,7 @@ fn main() {
             cpu,
             hf_cache,
         } => {
-            dotenvy::dotenv().unwrap();
+            dotenvy::dotenv().ok();
             tracing_subscriber::fmt().init();
             if let Err(e) = cli::run_summary_bench(file, model, max_article_chars, runs, cpu, hf_cache) {
                 eprintln!("summary-bench: {e}");
@@ -72,7 +72,7 @@ fn main() {
 }
 
 async fn run_server() {
-    dotenvy::dotenv().unwrap();
+    dotenvy::dotenv().ok();
     tracing_subscriber::fmt().init();
 
     let config = match config::Config::from_env() {

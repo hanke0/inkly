@@ -60,14 +60,29 @@ pub async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
-fn basic_credentials_match(provided_user: &str, provided_pass: &str, expected_user: &str, expected_pass: &str) -> bool {
+fn basic_credentials_match(
+    provided_user: &str,
+    provided_pass: &str,
+    expected_user: &str,
+    expected_pass: &str,
+) -> bool {
     use subtle::ConstantTimeEq;
 
-    if provided_user.len() != expected_user.len() || provided_pass.len() != expected_pass.len() {
-        return false;
+    // ct_eq requires equal-length slices.  Pad both sides to the longer length
+    // so neither the content comparison nor the length check leaks timing info.
+    fn ct_str_eq(a: &[u8], b: &[u8]) -> subtle::Choice {
+        const BUF: usize = 256;
+        let mut ab = [0u8; BUF];
+        let mut bb = [0u8; BUF];
+        let al = a.len().min(BUF);
+        let bl = b.len().min(BUF);
+        ab[..al].copy_from_slice(&a[..al]);
+        bb[..bl].copy_from_slice(&b[..bl]);
+        (a.len() as u64).ct_eq(&(b.len() as u64)) & ab.ct_eq(&bb)
     }
 
-    let user_ok = provided_user.as_bytes().ct_eq(expected_user.as_bytes());
-    let pass_ok = provided_pass.as_bytes().ct_eq(expected_pass.as_bytes());
-    bool::from(user_ok & pass_ok)
+    bool::from(
+        ct_str_eq(provided_user.as_bytes(), expected_user.as_bytes())
+            & ct_str_eq(provided_pass.as_bytes(), expected_pass.as_bytes()),
+    )
 }

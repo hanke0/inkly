@@ -101,6 +101,18 @@ fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Schema / field helpers
+// ---------------------------------------------------------------------------
+
+macro_rules! require_field {
+    ($schema:expr, $name:literal) => {
+        $schema
+            .get_field($name)
+            .map_err(|_| SearchError::InvalidInput(concat!("missing ", $name, " field").into()))?
+    };
+}
+
+// ---------------------------------------------------------------------------
 // Field extraction helpers
 // ---------------------------------------------------------------------------
 
@@ -214,51 +226,29 @@ impl IndexManager {
         };
 
         let schema = index.schema();
-        let tenant_id_field = schema
-            .get_field("tenant_id")
-            .map_err(|_| SearchError::InvalidInput("missing tenant_id field".into()))?;
-        let doc_id_field = schema
-            .get_field("doc_id")
-            .map_err(|_| SearchError::InvalidInput("missing doc_id field".into()))?;
+        let tenant_id_field = require_field!(schema, "tenant_id");
+        let doc_id_field = require_field!(schema, "doc_id");
         if !schema.get_field_entry(doc_id_field).is_indexed() {
             return Err(SearchError::InvalidInput(
                 "Tantivy index schema is outdated: doc_id must be indexed. Delete the index directory (DATA_DIR/index) and restart."
                     .into(),
             ));
         }
-        let doc_url_field = schema
-            .get_field("doc_url")
-            .map_err(|_| SearchError::InvalidInput("missing doc_url field".into()))?;
-        let title_field = schema
-            .get_field("title")
-            .map_err(|_| SearchError::InvalidInput("missing title field".into()))?;
-        let content_field = schema
-            .get_field("content")
-            .map_err(|_| SearchError::InvalidInput("missing content field".into()))?;
-        let summary_field = schema
-            .get_field("summary")
-            .map_err(|_| SearchError::InvalidInput("missing summary field".into()))?;
-        let created_timestamp_field = schema
-            .get_field("created_timestamp")
-            .map_err(|_| SearchError::InvalidInput("missing created_timestamp field".into()))?;
-        let update_timestamp_field = schema
-            .get_field("update_timestamp")
-            .map_err(|_| SearchError::InvalidInput("missing update_timestamp field".into()))?;
-        let tags_field = schema
-            .get_field("tags")
-            .map_err(|_| SearchError::InvalidInput("missing tags field".into()))?;
-        let path_field = schema
-            .get_field("path")
-            .map_err(|_| SearchError::InvalidInput("missing path field".into()))?;
+        let doc_url_field = require_field!(schema, "doc_url");
+        let title_field = require_field!(schema, "title");
+        let content_field = require_field!(schema, "content");
+        let summary_field = require_field!(schema, "summary");
+        let created_timestamp_field = require_field!(schema, "created_timestamp");
+        let update_timestamp_field = require_field!(schema, "update_timestamp");
+        let tags_field = require_field!(schema, "tags");
+        let path_field = require_field!(schema, "path");
         if !schema.get_field_entry(path_field).is_indexed() {
             return Err(SearchError::InvalidInput(
                 "Tantivy index schema is outdated: path must be indexed. Delete DATA_DIR/index and restart."
                     .into(),
             ));
         }
-        let note_field = schema
-            .get_field("note")
-            .map_err(|_| SearchError::InvalidInput("missing note field".into()))?;
+        let note_field = require_field!(schema, "note");
 
         Ok(Self {
             index,
@@ -327,6 +317,31 @@ impl IndexManager {
         builder.build()
     }
 
+    fn build_tantivy_doc(
+        &self,
+        tenant_id: &str,
+        doc: &DocumentRow,
+        created_at: i64,
+        updated_at: i64,
+    ) -> tantivy::TantivyDocument {
+        let mut document = doc!(
+            self.tenant_id_field => tenant_id,
+            self.doc_id_field => doc.doc_id,
+            self.doc_url_field => doc.doc_url.as_str(),
+            self.title_field => doc.title.as_str(),
+            self.content_field => doc.content.as_str(),
+            self.summary_field => doc.summary.as_str(),
+            self.created_timestamp_field => created_at,
+            self.update_timestamp_field => updated_at,
+            self.path_field => doc.path.as_str(),
+            self.note_field => doc.note.as_str()
+        );
+        for tag in &doc.tags {
+            document.add_text(self.tags_field, tag);
+        }
+        document
+    }
+
     pub fn index_document(&self, tenant_id: &str, doc: DocumentRow) -> Result<IndexStats> {
         if tenant_id.trim().is_empty() {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
@@ -344,28 +359,12 @@ impl IndexManager {
 
         let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
         writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
-
-        let mut document = doc!(
-            self.tenant_id_field => tenant_id,
-            self.doc_id_field => doc.doc_id,
-            self.doc_url_field => doc.doc_url.as_str(),
-            self.title_field => doc.title.as_str(),
-            self.content_field => doc.content.as_str(),
-            self.summary_field => doc.summary.as_str(),
-            self.created_timestamp_field => created_at,
-            self.update_timestamp_field => now,
-            self.path_field => doc.path.as_str(),
-            self.note_field => doc.note.as_str()
-        );
-        for tag in &doc.tags {
-            document.add_text(self.tags_field, tag);
-        }
-        writer.add_document(document)?;
+        writer.add_document(self.build_tantivy_doc(tenant_id, &doc, created_at, now))?;
         writer.commit()?;
 
         Ok(IndexStats {
             indexed: 1,
-            deleted: 0, // Tantivy doesn't tell us how many were deleted.
+            deleted: 0,
         })
     }
 
@@ -397,23 +396,7 @@ impl IndexManager {
 
         for (doc, created_at) in docs.into_iter().zip(created_at_per_doc) {
             writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
-
-            let mut document = doc!(
-                self.tenant_id_field => tenant_id,
-                self.doc_id_field => doc.doc_id,
-                self.doc_url_field => doc.doc_url.as_str(),
-                self.title_field => doc.title.as_str(),
-                self.content_field => doc.content.as_str(),
-                self.summary_field => doc.summary.as_str(),
-                self.created_timestamp_field => created_at,
-                self.update_timestamp_field => now,
-                self.path_field => doc.path.as_str(),
-                self.note_field => doc.note.as_str()
-            );
-            for tag in &doc.tags {
-                document.add_text(self.tags_field, tag);
-            }
-            writer.add_document(document)?;
+            writer.add_document(self.build_tantivy_doc(tenant_id, &doc, created_at, now))?;
             indexed += 1;
         }
 
