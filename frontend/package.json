@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "chardet": "^2.1.1",
     "dompurify": "^3.3.3",
     "katex": "^0.16.44",
     "marked": "^17.0.5",

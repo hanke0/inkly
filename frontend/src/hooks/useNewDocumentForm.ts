@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { indexDocument, indexDocumentUpload } from "../api";
+import { ensureUtf8File } from "../lib/encoding";
 import { extractErrorMessage } from "../lib/errors";
 import type { DocumentDetailResponse, DocumentIn, IndexResponse } from "../types";
 
@@ -77,8 +78,9 @@ export function useNewDocumentForm(
     try {
       let res: IndexResponse;
       if (contentFile) {
+        const utf8File = await ensureUtf8File(contentFile);
         const fd = new FormData();
-        fd.append("file", contentFile);
+        fd.append("file", utf8File);
         fd.append("title", title.trim());
         fd.append("doc_url", docUrl.trim());
         fd.append("path", path.trim());
@@ -90,7 +92,7 @@ export function useNewDocumentForm(
         res = await indexDocumentUpload(fd);
       } else {
         if (!content.trim()) {
-          setFormError("Add content in the text area or choose a UTF-8 text or HTML file.");
+          setFormError("Add content in the text area or upload a text / HTML file.");
           setLoading(false);
           return;
         }
