@@ -393,6 +393,15 @@ body {
     padding: 0 0.1em;
   }
 
+  .tiptap-root--readonly {
+    background: #faf8f5;
+    border-color: #ddd8d0;
+  }
+
+  .tiptap-root--readonly .tiptap {
+    cursor: default;
+  }
+
   .inkly-reading__iframe-root {
     min-height: 0;
     min-width: 0;

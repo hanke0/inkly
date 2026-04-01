@@ -2,7 +2,8 @@ export type DocumentIn = {
   /** Omit for server-assigned id. */
   doc_id?: number;
   title: string;
-  content: string;
+  /** Required for new documents. Omit on updates (existing content is preserved). */
+  content?: string;
   doc_url: string;
   tags: string[];
   path: string;

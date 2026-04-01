@@ -196,13 +196,29 @@ async fn perform_index_document(
 
     let index = state.index.clone();
     let summarizer = state.summarizer.clone();
-    let content = input.content;
+
+    let (content, existing_summary) = if want_auto_id {
+        let c = input.content.ok_or_else(|| {
+            ApiError::bad_request("content is required for new documents")
+        })?;
+        (c, None)
+    } else {
+        let existing_doc_id = requested_doc_id.unwrap_or(0);
+        let idx = index.clone();
+        let tid = tenant_id.clone();
+        let existing = tokio::task::spawn_blocking(move || idx.get_document(&tid, existing_doc_id))
+            .await
+            .map_err(|_| ApiError::Internal)??
+            .ok_or(ApiError::NotFound)?;
+        (existing.content, Some(existing.summary))
+    };
+
     let doc = DocumentRow {
-        doc_id: 0, // placeholder; assigned inside spawn_blocking
+        doc_id: 0,
         title: input.title,
         content: content.clone(),
         doc_url: input.doc_url,
-        summary: String::new(), // computed inside spawn_blocking
+        summary: String::new(),
         tags: input.tags,
         path: input.path,
         note: input.note,
@@ -215,7 +231,8 @@ async fn perform_index_document(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
-        let summary = summarize_if_enabled(&summarizer, &content, op);
+        let summary = existing_summary
+            .unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, op));
         let stats = index.index_document(
             &tenant_id,
             DocumentRow {
@@ -328,10 +345,6 @@ pub async fn index_document_upload(
         }
     }
 
-    let bytes = file_bytes.ok_or_else(|| ApiError::bad_request("missing file"))?;
-    let content =
-        String::from_utf8(bytes).map_err(|_| ApiError::bad_request("file must be utf-8"))?;
-
     let doc_id = match doc_id_raw.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(s) => {
@@ -340,6 +353,13 @@ pub async fn index_document_upload(
                 .map_err(|_| ApiError::bad_request("invalid doc_id"))?;
             Some(n)
         }
+    };
+
+    let content = if use_automatic_doc_id(doc_id) {
+        let bytes = file_bytes.ok_or_else(|| ApiError::bad_request("missing file"))?;
+        Some(String::from_utf8(bytes).map_err(|_| ApiError::bad_request("file must be utf-8"))?)
+    } else {
+        None
     };
 
     let tags: Vec<String> = tags_raw
@@ -394,17 +414,28 @@ pub async fn index_documents_bulk(
         let mut rows: Vec<DocumentRow> = Vec::with_capacity(documents.len());
         let mut ids: Vec<u64> = Vec::with_capacity(documents.len());
         for d in documents {
-            let doc_id = if use_automatic_doc_id(d.doc_id) {
+            let want_auto = use_automatic_doc_id(d.doc_id);
+            let doc_id = if want_auto {
                 index.allocate_doc_id()?
             } else {
                 d.doc_id.unwrap_or(0)
             };
+            let (content, existing_summary) = if want_auto {
+                (d.content.unwrap_or_default(), None)
+            } else {
+                let existing = index.get_document(&tenant_id, doc_id)?;
+                match existing {
+                    Some(e) => (e.content, Some(e.summary)),
+                    None => (String::new(), None),
+                }
+            };
             ids.push(doc_id);
-            let summary = summarize_if_enabled(&summarizer, &d.content, "index_documents_bulk");
+            let summary = existing_summary
+                .unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, "index_documents_bulk"));
             rows.push(DocumentRow {
                 doc_id,
                 title: d.title,
-                content: d.content,
+                content,
                 doc_url: d.doc_url,
                 summary,
                 tags: d.tags,

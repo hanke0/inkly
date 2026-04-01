@@ -12,6 +12,7 @@ type TiptapEditorProps = {
   initialContent: string;
   onChange: (markdown: string) => void;
   placeholder?: string;
+  editable?: boolean;
 };
 
 function BubbleBtn({
@@ -52,6 +53,7 @@ export function TiptapEditor({
   initialContent,
   onChange,
   placeholder = "Start writing…",
+  editable = true,
 }: TiptapEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -67,6 +69,7 @@ export function TiptapEditor({
       Highlight,
       Markdown,
     ],
+    editable,
     content: initialContent,
     onUpdate({ editor }) {
       const md = (editor.storage as Record<string, any>).markdown?.getMarkdown?.();
@@ -77,8 +80,8 @@ export function TiptapEditor({
   if (!editor) return null;
 
   return (
-    <div className="tiptap-root">
-      <BubbleMenu editor={editor}>
+    <div className={`tiptap-root${editable ? "" : " tiptap-root--readonly"}`}>
+      {editable && <BubbleMenu editor={editor}>
         <div className="flex items-center gap-0.5 rounded-lg bg-[#1b1b18]/95 px-1.5 py-1 shadow-xl ring-1 ring-white/10 backdrop-blur-sm">
           <BubbleBtn
             active={editor.isActive("bold")}
@@ -240,7 +243,7 @@ export function TiptapEditor({
             </svg>
           </BubbleBtn>
         </div>
-      </BubbleMenu>
+      </BubbleMenu>}
 
       <EditorContent editor={editor} />
     </div>

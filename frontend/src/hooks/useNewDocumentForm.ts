@@ -65,9 +65,9 @@ export function useNewDocumentForm(
   function prepareEdit(d: DocumentDetailResponse) {
     setFormError("");
     setEditingDocId(d.doc_id);
-    setContentMode("editor");
+    setContentMode("upload");
     setTitle(d.title);
-    setContent(d.content);
+    setContent("");
     clearFileInput();
     setDocUrl(d.doc_url);
     setTagsText(d.tags.join(", "));
@@ -89,12 +89,17 @@ export function useNewDocumentForm(
 
     try {
       let res: IndexResponse;
-      if (contentMode === "upload" && !contentFile) {
-        setFormError("Upload a file or switch to the editor to write content.");
-        setLoading(false);
-        return;
-      }
-      if (contentFile) {
+      if (updateId != null) {
+        const payload: DocumentIn = {
+          doc_id: updateId,
+          title: title.trim(),
+          doc_url: docUrl.trim(),
+          tags,
+          path: path.trim(),
+          note,
+        };
+        res = await indexDocument(payload);
+      } else if (contentFile) {
         const utf8File = await ensureUtf8File(contentFile);
         const fd = new FormData();
         fd.append("file", utf8File);
@@ -103,11 +108,8 @@ export function useNewDocumentForm(
         fd.append("path", path.trim());
         fd.append("note", note);
         fd.append("tags", tagsText);
-        if (updateId != null) {
-          fd.append("doc_id", String(updateId));
-        }
         res = await indexDocumentUpload(fd);
-      } else {
+      } else if (contentMode === "editor") {
         if (!content.trim()) {
           setFormError("Add content in the text area or upload a text / HTML file.");
           setLoading(false);
@@ -121,10 +123,11 @@ export function useNewDocumentForm(
           path: path.trim(),
           note,
         };
-        if (updateId != null) {
-          payload.doc_id = updateId;
-        }
         res = await indexDocument(payload);
+      } else {
+        setFormError("Upload a file or switch to the editor to write content.");
+        setLoading(false);
+        return;
       }
       onSuccessRef.current(res, updateId != null ? { updatedDocId: updateId } : {});
     } catch (err) {

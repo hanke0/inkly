@@ -6,7 +6,9 @@ pub struct DocumentIn {
     #[serde(default)]
     pub doc_id: Option<u64>,
     pub title: String,
-    pub content: String,
+    /// Required for new documents. Ignored on updates (existing content is preserved).
+    #[serde(default)]
+    pub content: Option<String>,
     pub doc_url: String,
     pub tags: Vec<String>,
     /// Parent directory path, normalized by the API to `/` or `/segment/.../` (trailing slash except root).

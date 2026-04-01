@@ -18,7 +18,7 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
     return null;
   }
 
-  const isEditor = form.contentMode === "editor";
+  const isEditor = !form.isEditing && form.contentMode === "editor";
 
   return (
     <div

@@ -201,7 +201,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
     isEditing,
   } = form;
 
-  const isEditor = contentMode === "editor";
+  const isEditor = !isEditing && contentMode === "editor";
 
   return (
     <form
@@ -309,6 +309,73 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
             </div>
           </details>
         </>
+      ) : isEditing ? (
+        <FormSection>
+          <div>
+            <label htmlFor="idx-title" className={labelCls}>
+              Title
+            </label>
+            <input
+              id="idx-title"
+              autoFocus
+              className={inputCls}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Page title"
+            />
+          </div>
+          <div>
+            <label htmlFor="idx-path" className={labelCls}>
+              Folder path
+            </label>
+            <input
+              id="idx-path"
+              className={`${inputCls} font-mono text-[12px]`}
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/ or /notes/"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="idx-url" className={labelCls}>
+                Source URL
+              </label>
+              <input
+                id="idx-url"
+                type="url"
+                className={`${inputCls} font-mono text-[12px]`}
+                value={docUrl}
+                onChange={(e) => setDocUrl(e.target.value)}
+                placeholder="https://…"
+              />
+            </div>
+            <div>
+              <label htmlFor="idx-tags" className={labelCls}>
+                Tags
+              </label>
+              <input
+                id="idx-tags"
+                className={inputCls}
+                value={tagsText}
+                onChange={(e) => setTagsText(e.target.value)}
+                placeholder="a, b, c"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="idx-note" className={labelCls}>
+              Note
+            </label>
+            <textarea
+              id="idx-note"
+              className={`${textareaCls} min-h-[2.75rem] resize-y`}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+        </FormSection>
       ) : (
         <>
           <FormSection>
