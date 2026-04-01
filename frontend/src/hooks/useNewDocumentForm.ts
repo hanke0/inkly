@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import { indexDocument, indexDocumentUpload } from "../api";
 import { ensureUtf8File } from "../lib/encoding";
+import { htmlToMarkdown, isHtmlFile, readFileAsText } from "../lib/htmlToMarkdown";
 import { extractErrorMessage } from "../lib/errors";
 import type { DocumentDetailResponse, DocumentIn, IndexResponse } from "../types";
 
@@ -25,6 +26,8 @@ export function useNewDocumentForm(
   const [path, setPath] = useState("");
   const [note, setNote] = useState("");
 
+  const [converting, setConverting] = useState(false);
+  const [convertedFromHtml, setConvertedFromHtml] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -43,7 +46,28 @@ export function useNewDocumentForm(
   }
 
   function switchToUpload() {
+    setConvertedFromHtml(false);
     setContentMode("upload");
+  }
+
+  const isHtmlFileSelected = contentFile != null && isHtmlFile(contentFile);
+
+  async function convertHtmlFile() {
+    if (!contentFile || !isHtmlFile(contentFile)) return;
+    setConverting(true);
+    setFormError("");
+    try {
+      const raw = await readFileAsText(contentFile);
+      const md = htmlToMarkdown(raw);
+      setContent(md);
+      setConvertedFromHtml(true);
+      clearFileInput();
+      setContentMode("editor");
+    } catch {
+      setFormError("Failed to convert HTML to Markdown.");
+    } finally {
+      setConverting(false);
+    }
   }
 
   /** Call when opening the modal for a new document; optionally scope `path` to the current catalog folder. */
@@ -54,6 +78,8 @@ export function useNewDocumentForm(
     setTitle("");
     setContent("");
     clearFileInput();
+    setConvertedFromHtml(false);
+    setConverting(false);
     setDocUrl("");
     setTagsText("");
     setNote("");
@@ -69,6 +95,8 @@ export function useNewDocumentForm(
     setTitle(d.title);
     setContent("");
     clearFileInput();
+    setConvertedFromHtml(false);
+    setConverting(false);
     setDocUrl(d.doc_url);
     setTagsText(d.tags.join(", "));
     setPath(d.path);
@@ -149,6 +177,10 @@ export function useNewDocumentForm(
     setContentFile,
     contentFileInputRef,
     clearFileInput,
+    isHtmlFileSelected,
+    convertHtmlFile,
+    converting,
+    convertedFromHtml,
     docUrl,
     setDocUrl,
     tagsText,

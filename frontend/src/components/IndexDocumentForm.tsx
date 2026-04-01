@@ -68,7 +68,7 @@ function UploadArea({
   form: NewDocumentFormState;
   fileInputId: string;
 }) {
-  const { contentFile, setContentFile, contentFileInputRef, clearFileInput } =
+  const { contentFile, setContentFile, contentFileInputRef, clearFileInput, isHtmlFileSelected, convertHtmlFile, converting } =
     form;
 
   return (
@@ -86,39 +86,70 @@ function UploadArea({
       />
 
       {contentFile ? (
-        <div className="flex items-center gap-3 rounded-lg border border-inkly-accent/30 bg-inkly-accent/5 px-4 py-3">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="shrink-0 text-inkly-accent"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-          <div className="min-w-0 flex-1">
-            <p
-              className="truncate font-mono text-sm font-medium text-inkly-ink"
-              title={contentFile.name}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 rounded-lg border border-inkly-accent/30 bg-inkly-accent/5 px-4 py-3">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0 text-inkly-accent"
             >
-              {contentFile.name}
-            </p>
-            <p className="text-[11px] text-inkly-muted">
-              {(contentFile.size / 1024).toFixed(1)} KB
-            </p>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            <div className="min-w-0 flex-1">
+              <p
+                className="truncate font-mono text-sm font-medium text-inkly-ink"
+                title={contentFile.name}
+              >
+                {contentFile.name}
+              </p>
+              <p className="text-[11px] text-inkly-muted">
+                {(contentFile.size / 1024).toFixed(1)} KB
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-inkly-muted transition hover:bg-inkly-border-soft hover:text-inkly-ink"
+              onClick={clearFileInput}
+            >
+              Remove
+            </button>
           </div>
-          <button
-            type="button"
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-inkly-muted transition hover:bg-inkly-border-soft hover:text-inkly-ink"
-            onClick={clearFileInput}
-          >
-            Remove
-          </button>
+          {isHtmlFileSelected && (
+            <button
+              type="button"
+              disabled={converting}
+              onClick={convertHtmlFile}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-inkly-accent/30 bg-white px-3 py-2 text-sm font-medium text-inkly-accent shadow-sm transition hover:bg-inkly-accent/5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {converting ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Converting…
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="16 3 21 3 21 8" />
+                    <line x1="4" y1="20" x2="21" y2="3" />
+                    <polyline points="21 16 21 21 16 21" />
+                    <line x1="15" y1="15" x2="21" y2="21" />
+                    <line x1="4" y1="4" x2="9" y2="9" />
+                  </svg>
+                  Convert to Markdown
+                </>
+              )}
+            </button>
+          )}
         </div>
       ) : (
         <label
@@ -161,7 +192,17 @@ function EditorArea({ form }: { form: NewDocumentFormState }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className={`${labelCls} mb-0`}>Body</span>
+        <div className="flex items-center gap-2">
+          <span className={`${labelCls} mb-0`}>Body</span>
+          {form.convertedFromHtml && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-inkly-accent/10 px-2 py-0.5 text-[10px] font-medium text-inkly-accent">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Converted from HTML
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={form.switchToUpload}

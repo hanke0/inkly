@@ -32,7 +32,7 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
         aria-labelledby={titleId}
         className={`my-auto w-full overflow-hidden rounded-xl border border-inkly-border bg-inkly-paper shadow-xl transition-all ${
           isEditor
-            ? "flex max-h-[calc(100vh-4rem)] max-w-4xl flex-col"
+            ? "flex h-[calc(100vh-4rem)] max-w-4xl flex-col"
             : "max-w-2xl"
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -65,7 +65,7 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
         <div
           className={`px-4 py-3 sm:px-5 sm:pb-4 ${
             isEditor
-              ? "flex min-h-0 flex-1 flex-col overflow-y-auto"
+              ? "flex min-h-0 flex-1 flex-col"
               : "max-h-[36rem] overflow-y-auto"
           }`}
         >

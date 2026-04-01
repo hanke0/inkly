@@ -251,7 +251,7 @@ body {
     border: 1px solid #c9c2b5;
     background: #fff;
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-    overflow: hidden;
+    overflow: scroll;
   }
 
   .tiptap-root .tiptap {
