@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 import type { NewDocumentFormState } from "../hooks/useNewDocumentForm";
 import { TiptapEditor } from "./TiptapEditor";
@@ -58,6 +58,82 @@ function PenIcon({ className }: { className?: string }) {
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
     </svg>
+  );
+}
+
+function TagsInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const tags = value
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  function commit(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const next = [...tags, trimmed];
+    onChange(next.join(", "));
+    setDraft("");
+  }
+
+  function removeAt(idx: number) {
+    const next = tags.filter((_, i) => i !== idx);
+    onChange(next.join(", "));
+  }
+
+  return (
+    <div
+      className="flex min-h-[2.125rem] flex-wrap items-center gap-1.5 rounded-md border border-inkly-border/90 bg-white px-2 py-1.5 shadow-sm transition focus-within:border-inkly-accent focus-within:ring-1 focus-within:ring-inkly-accent/25"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {tags.map((tag, i) => (
+        <span
+          key={`${tag}-${i}`}
+          className="inline-flex items-center gap-1 rounded bg-inkly-sidebar px-1.5 py-0.5 text-xs font-medium text-inkly-ink"
+        >
+          {tag}
+          <button
+            type="button"
+            className="ml-0.5 rounded-sm text-inkly-muted transition hover:text-inkly-ink"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeAt(i);
+            }}
+            aria-label={`Remove ${tag}`}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        className="min-w-[4rem] flex-1 border-none bg-transparent text-sm text-inkly-ink outline-none placeholder:text-inkly-faint"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit(draft);
+          } else if (e.key === "Backspace" && draft === "" && tags.length > 0) {
+            removeAt(tags.length - 1);
+          }
+        }}
+        onBlur={() => {
+          if (draft.trim()) commit(draft);
+        }}
+        placeholder={tags.length === 0 ? "Type and press Enter" : ""}
+      />
+    </div>
   );
 }
 
@@ -323,16 +399,8 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                   />
                 </div>
                 <div>
-                  <label htmlFor="idx-tags" className={labelCls}>
-                    Tags
-                  </label>
-                  <input
-                    id="idx-tags"
-                    className={inputCls}
-                    value={tagsText}
-                    onChange={(e) => setTagsText(e.target.value)}
-                    placeholder="a, b, c"
-                  />
+                  <label className={labelCls}>Tags</label>
+                  <TagsInput value={tagsText} onChange={setTagsText} />
                 </div>
               </div>
               <div>
@@ -389,16 +457,8 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
               />
             </div>
             <div>
-              <label htmlFor="idx-tags" className={labelCls}>
-                Tags
-              </label>
-              <input
-                id="idx-tags"
-                className={inputCls}
-                value={tagsText}
-                onChange={(e) => setTagsText(e.target.value)}
-                placeholder="a, b, c"
-              />
+              <label className={labelCls}>Tags</label>
+              <TagsInput value={tagsText} onChange={setTagsText} />
             </div>
           </div>
           <div>
@@ -462,16 +522,8 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 />
               </div>
               <div>
-                <label htmlFor="idx-tags" className={labelCls}>
-                  Tags
-                </label>
-                <input
-                  id="idx-tags"
-                  className={inputCls}
-                  value={tagsText}
-                  onChange={(e) => setTagsText(e.target.value)}
-                  placeholder="a, b, c"
-                />
+                <label className={labelCls}>Tags</label>
+                <TagsInput value={tagsText} onChange={setTagsText} />
               </div>
             </div>
             <div>
