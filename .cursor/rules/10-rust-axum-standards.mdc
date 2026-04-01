@@ -4,29 +4,23 @@ globs: "**/*.rs"
 alwaysApply: false
 ---
 
-# Rust conventions
-- Rust code must be formatted with `rustfmt` and pass `clippy` when feasible.
-- Use `thiserror` for error types and map them to HTTP responses in one place.
-- Avoid `unwrap()`/`expect()`; use `?` and propagate typed errors.
-- Keep modules small: split handlers, services, and domain logic into separate files/modules.
+# Rust
+- Format with `rustfmt`, pass `clippy`.
+- Use `thiserror` for error types; map to HTTP responses in one place.
+- No `unwrap()` / `expect()`; propagate typed errors with `?`.
+- Keep modules small: handlers, services, domain logic in separate files.
 
-# Axum API conventions
-- Handlers should return `Result<_, AppError>` (or equivalent) rather than panicking.
-- All JSON payloads must be defined as `serde::{Serialize, Deserialize}` DTOs.
-- Do not expose internal domain types directly to the API; use DTOs at the edges.
-- Validate inputs explicitly (lengths, required fields, query limits).
-- Prefer `axum::extract::State` for shared dependencies (e.g., Tantivy index writer/searcher).
-- Every HTTP API endpoint must have automated tests (prefer integration tests covering request/response behavior, plus unit tests for the underlying services when appropriate).
+# Axum API
+- Handlers return `Result<_, AppError>`; never panic.
+- JSON payloads as `serde` DTOs; do not expose internal domain types.
+- Validate inputs (lengths, required fields, query/pagination limits).
+- Use `axum::extract::State` for shared deps (index writer/searcher).
+- Every endpoint needs automated tests (integration + service-level unit tests).
 
-# Logging & tracing
-- Use `tracing` (not `println!`) with structured fields.
-- Include a request-scoped identifier in logs where possible.
+# Observability
+- `tracing` with structured fields only (no `println!`); include request-scoped id.
 
-# Security checklist for Axum APIs
-- Protected endpoints must perform authn/authz checks on the backend (service layer or middleware), not just on the frontend.
-- Validate request bodies and query parameters (lengths, allowed ranges, pagination limits).
-- Enforce payload size limits (and consider timeouts) to mitigate DoS.
-- Do not include secrets/tokens in logs; never log authorization headers or credentials.
-- Return error responses that avoid leaking stack traces or internal implementation details.
-- Configure CORS intentionally (allow only required origins/methods/headers).
-
+# Security
+- Authn/authz on the backend (middleware or service layer).
+- Enforce payload size limits and timeouts; configure CORS to allowed origins only.
+- Never log secrets/credentials; error responses must not leak internals.

@@ -4,27 +4,21 @@ globs: "**/*.rs"
 alwaysApply: false
 ---
 
-# Indexing & schema
-- Design a stable schema: define field types up-front and keep field names consistent across versions.
-- Use a single primary document id field (e.g., `doc_id`) to support updates/deletes deterministically.
-- Avoid re-indexing whole datasets for incremental changes; use Tantivy's update patterns where appropriate.
+# Schema
+- Stable schema with a single primary id field (`doc_id`) for deterministic updates/deletes.
+- Schema changes must bump `STORAGE_DATA_VERSION` and ship a CLI migration tool (`migrate` subcommand or equivalent).
+- Use incremental update patterns; avoid full re-index for small changes.
 
-# Persistence & commit policy
-- Be explicit about when writes are committed (writer `commit`/segment refresh).
-- Ensure background indexing/commit tasks have a clear lifecycle and error reporting path.
+# Persistence
+- Be explicit about commit timing (writer `commit` / segment refresh); background tasks must have clear lifecycle and error reporting.
 
-# Searching & query parsing
-- Always enforce query limits (top-k, max query length, allowed filters).
-- Prefer programmatic query building over parsing untrusted raw query strings.
-- If query parsing is user-driven, validate/limit inputs and handle parse errors as typed API errors.
+# Query
+- Build queries programmatically; never pass untrusted raw query strings directly to the parser.
+- Enforce limits on all queries: top-k, max query length, boolean clause count, wildcard usage.
+- Validate user-driven query input and map parse errors to typed API errors.
 
-# Security for search/storage
-- Never return search results that the caller is not authorized to see; apply tenant/user permission filters at query time.
-- Avoid indexing secrets or sensitive fields in plaintext unless you have a clear threat model and compensating controls.
-- Restrict which fields are searchable/sortable to reduce data exposure and expensive queries.
-- Guard against query-driven DoS: cap complexity (e.g., top-k, boolean clauses, wildcard usage) and enforce timeouts/budgeting where available.
-
-# Determinism and safety
-- Never let a request allocate unbounded memory (e.g., huge result sets).
-- Return total hits / pagination metadata consistently from search endpoints.
-
+# Security & safety
+- Apply tenant/user permission filters at query time; never return unauthorized results.
+- Do not index secrets in plaintext; restrict searchable/sortable fields to minimize exposure.
+- Cap result sizes and enforce timeouts to prevent unbounded memory allocation and query-driven DoS.
+- Return total hits + pagination metadata consistently.

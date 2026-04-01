@@ -3,25 +3,29 @@ description: Core architecture constraints for Inkly
 alwaysApply: true
 ---
 
-# Inkly stack constraints
-- Backend must be implemented in Rust using `axum`.
-- Frontend must be implemented as a React web app using Tailwind CSS utility classes.
-- Search + storage must use Tantivy (indexing, querying, and persistence rules must follow the Tantivy rule).
+# Stack constraints
+- Backend: Rust + `axum`.
+- Frontend: React + Tailwind CSS utility classes.
+- Search & storage: Tantivy (follow the Tantivy rule for indexing, querying, and persistence).
 
-# How to structure changes
-- Keep responsibilities separated: API layer (Axum) should not contain indexing/querying business logic; move Tantivy logic into dedicated Rust modules/services.
-- Define a single shared contract for API payloads (DTOs) and avoid ad-hoc JSON shapes.
-- Favor typed boundaries: prefer `serde`-serializable structs/enums over `Value`/untyped maps.
+# Code structure
+- Separate responsibilities: keep Tantivy logic in dedicated modules/services, not in Axum handlers.
+- Define shared API payload structs (DTOs); avoid ad-hoc JSON shapes.
+- Prefer `serde`-serializable structs/enums over `Value` / untyped maps.
 
-# Quality bar
-- Never use `unwrap()`/`expect()` in request paths or background tasks; return/handle errors explicitly.
-- Use `tracing` for logs with structured fields (e.g., request id, tenant, document id).
-- Add tests when touching non-trivial behavior (query semantics, indexing updates, API error mapping).
+# Quality
+- No `unwrap()` / `expect()` in request paths or background tasks; handle errors explicitly.
+- Use `tracing` with structured fields (request id, tenant, document id).
+- Add tests for non-trivial behavior (query semantics, indexing, API error mapping).
 
-# Security defaults (end-to-end)
-- Treat all client input as untrusted: validate sizes, formats, and allowed values at the API boundary.
-- Enforce authentication and authorization for protected resources; never rely on frontend-only checks.
-- Apply permission scoping to search/storage: users can only query documents they are allowed to access.
-- Avoid leaking internals: return generic error messages to clients; log detailed errors internally without secrets.
-- Configure request size limits and rate limiting to reduce DoS risk.
+# Security
+- Validate all client input (size, format, allowed values) at the API boundary.
+- Enforce auth and permission scoping server-side; never rely on frontend-only checks.
+- Return generic error messages to clients; log details internally without secrets.
+- Configure request size limits and rate limiting.
 
+# Performance
+- Minimize time and space complexity; prefer O(1) / O(log n) over O(n) where feasible.
+- **Rust**: reuse buffers, prefer iterators/streams over intermediate `Vec`s, use `Cow`/references when ownership is not required. Benchmark hot paths (request handling, search, indexing).
+- **React**: avoid unnecessary re-renders (`React.memo`, `useMemo`, `useCallback`); keep component trees shallow. Lazy-load routes/heavy components (`React.lazy` / dynamic `import()`). Debounce/throttle high-frequency events. Virtualize long lists.
+- Profile before micro-optimizing, but always consider algorithmic complexity during review and design.

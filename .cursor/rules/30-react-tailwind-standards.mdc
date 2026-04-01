@@ -4,27 +4,20 @@ globs: "**/*.tsx"
 alwaysApply: false
 ---
 
-# React conventions
-- Use functional components and hooks.
-- Prefer small components; extract reusable logic into custom hooks.
-- Do not duplicate state across multiple components; derive state when possible.
+# React
+- Functional components + hooks only; keep components small, extract reusable logic into custom hooks.
+- Derive state instead of duplicating it across components.
+- All API payloads fully typed (no `any`); keep DTOs in dedicated modules.
 
-# TypeScript & API contracts
-- All API payloads must be typed (no `any` / untyped JSON).
-- Keep API DTOs in dedicated modules and reuse them across components.
+# Tailwind
+- Style via `className` utility classes; no inline styles.
+- Use `clsx` (or equivalent) for conditional class lists.
+- Prefer low-saturation colors (`slate`, `stone`, `gray`); avoid vivid tones unless needed for clear affordance.
 
-# Tailwind conventions
-- Use Tailwind utility classes for styling via `className`.
-- Avoid inline styles unless strictly required.
-- For long conditional class lists, use a helper like `clsx` (or equivalent) instead of manual string concatenation.
-- Keep UI colors low-saturation: prefer neutral/grayscale (e.g., `slate`, `stone`, `gray`) and muted tones; avoid highly saturated/vivid brand colors unless required for a clear affordance.
+# Accessibility
+- Interactive elements must have accessible labels (`aria-label`, `role`, or visible text).
+- Handle loading and error states explicitly for all async operations.
 
-# Accessibility & UX
-- Ensure interactive elements have accessible labels (`aria-label`, `role`, or visible text).
-- Handle loading and error states explicitly for async operations.
-
-# Frontend security notes
-- Do not trust client input: treat all user-provided data as untrusted (validate on the backend as the source of truth).
-- Prevent XSS: never render untrusted HTML; avoid `dangerouslySetInnerHTML` and escape/encode any text coming from search/snippets.
-- Do not store secrets/tokens in insecure locations (prefer `httpOnly` cookies for auth tokens when possible).
-
+# Security
+- Never render untrusted HTML; avoid `dangerouslySetInnerHTML`.
+- Prefer `httpOnly` cookies for auth tokens; do not store secrets in localStorage/sessionStorage.
