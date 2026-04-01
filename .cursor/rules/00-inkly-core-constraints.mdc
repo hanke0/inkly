@@ -22,6 +22,7 @@ alwaysApply: true
 - Validate all client input (size, format, allowed values) at the API boundary.
 - Enforce auth and permission scoping server-side; never rely on frontend-only checks.
 - Return generic error messages to clients; log details internally without secrets.
+- Backend API errors returned to users must include both what failed and a clear, safe next step (for example, "refresh and retry", "check input format", or "contact support").
 - Configure request size limits and rate limiting.
 
 # Performance
