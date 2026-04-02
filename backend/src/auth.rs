@@ -25,18 +25,34 @@ pub async fn auth_middleware(
         .headers()
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("missing Authorization header"))?;
+        .ok_or_else(|| {
+            ApiError::unauthorized(
+                "Sign-in required. Send an `Authorization: Basic …` header or open the app and sign in again.",
+            )
+        })?;
 
     let b64 = auth_header
         .strip_prefix("Basic ")
-        .ok_or_else(|| ApiError::unauthorized("invalid Authorization header format"))?
+        .ok_or_else(|| {
+            ApiError::unauthorized(
+                "Authorization must use Basic authentication (`Authorization: Basic <base64>`). Check the header format.",
+            )
+        })?
         .trim();
 
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|_| ApiError::unauthorized("invalid credentials"))?;
+        .map_err(|_| {
+            ApiError::unauthorized(
+                "Credentials could not be decoded. Re-enter your username and password and try again.",
+            )
+        })?;
 
-    let creds = String::from_utf8(decoded).map_err(|_| ApiError::unauthorized("invalid credentials"))?;
+    let creds = String::from_utf8(decoded).map_err(|_| {
+        ApiError::unauthorized(
+            "Credentials could not be decoded. Re-enter your username and password and try again.",
+        )
+    })?;
 
     let (username, password) = creds
         .split_once(':')
@@ -48,7 +64,9 @@ pub async fn auth_middleware(
         state.expected_username(),
         state.expected_password(),
     ) {
-        return Err(ApiError::unauthorized("invalid credentials"));
+        return Err(ApiError::unauthorized(
+            "Username or password did not match the server configuration. Check your credentials and try again.",
+        ));
     }
 
     let user = AuthUser {

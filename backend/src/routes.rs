@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::result::Result;
 
 use crate::auth::AuthUser;
-use crate::error::ApiError;
+use crate::error::{user_message_for_search_query_error, ApiError};
 use crate::state::AppState;
 
 use inkly_contract::dto::{
@@ -47,7 +47,9 @@ fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
         return Ok("/".to_string());
     }
     if !s.starts_with('/') {
-        return Err(ApiError::bad_request("invalid path"));
+        return Err(ApiError::bad_request(
+            "Path must start with `/` (for example `/notes/`). Fix the path and try again.",
+        ));
     }
     let parts: Vec<&str> = s
         .split('/')
@@ -55,7 +57,9 @@ fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
         .collect();
     for p in &parts {
         if *p == ".." {
-            return Err(ApiError::bad_request("invalid path"));
+            return Err(ApiError::bad_request(
+                "Path cannot contain `..` segments. Use a folder path under your workspace.",
+            ));
         }
     }
     if parts.is_empty() {
@@ -71,17 +75,23 @@ fn use_automatic_doc_id(doc_id: Option<u64>) -> bool {
 /// Logical path after `normalize_dir_path`: `/` or `/segment/.../` (no `.` / `..` segments).
 fn validate_document_path(path: &str) -> Result<(), ApiError> {
     if path.is_empty() || !path.starts_with('/') {
-        return Err(ApiError::bad_request("invalid path"));
+        return Err(ApiError::bad_request(
+            "Path must start with `/` (for example `/notes/`). Fix the path and try again.",
+        ));
     }
     if path == "/" {
         return Ok(());
     }
     if !path.ends_with('/') {
-        return Err(ApiError::bad_request("invalid path"));
+        return Err(ApiError::bad_request(
+            "Document path must end with `/` because it names a folder (for example `/notes/`).",
+        ));
     }
     for seg in path.split('/').filter(|s| !s.is_empty()) {
         if seg == "." || seg == ".." {
-            return Err(ApiError::bad_request("invalid path"));
+            return Err(ApiError::bad_request(
+                "Path cannot contain `.` or `..` segments. Use a normal folder name.",
+            ));
         }
     }
     Ok(())
@@ -91,20 +101,28 @@ fn validate_document_path(path: &str) -> Result<(), ApiError> {
 fn validate_tag_format(tag: &str) -> Result<(), ApiError> {
     let t = tag.trim();
     if t.is_empty() {
-        return Err(ApiError::bad_request("invalid tags"));
+        return Err(ApiError::bad_request(
+            "Each tag must be non-empty after trimming spaces.",
+        ));
     }
     if t.chars().any(|c| c.is_control()) {
-        return Err(ApiError::bad_request("invalid tags"));
+        return Err(ApiError::bad_request(
+            "Tags cannot contain control characters. Use letters, numbers, and underscores.",
+        ));
     }
     if !t.chars().all(|c| c == '_' || c.is_alphanumeric()) {
-        return Err(ApiError::bad_request("invalid tags"));
+        return Err(ApiError::bad_request(
+            "Tags may only contain letters, numbers, and underscores.",
+        ));
     }
     Ok(())
 }
 
 fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
     if input.title.trim().is_empty() {
-        return Err(ApiError::bad_request("title is required"));
+        return Err(ApiError::bad_request(
+            "Title is required. Enter a non-empty title and try again.",
+        ));
     }
     validate_document_path(&input.path)?;
     for t in &input.tags {
@@ -155,7 +173,9 @@ fn into_document_detail(d: StoredDocument) -> DocumentDetailResponse {
 async fn multipart_text(field: axum::extract::multipart::Field<'_>, name: &str) -> Result<String, ApiError> {
     field.text().await.map_err(|e| {
         warn!(error = %e, name, "multipart text read failed");
-        ApiError::bad_request("invalid multipart body")
+        ApiError::bad_request(
+            "Could not read the multipart form. Retry the upload and ensure the request is multipart/form-data.",
+        )
     })
 }
 
@@ -213,10 +233,14 @@ async fn perform_index_document(
 
     let (content, existing_summary) = if want_auto_id {
         let c = input.content.ok_or_else(|| {
-            ApiError::bad_request("content is required for new documents")
+            ApiError::bad_request(
+                "New documents require body content. Paste or type content in the editor, then save.",
+            )
         })?;
         if c.trim().is_empty() {
-            return Err(ApiError::bad_request("content must not be empty"));
+            return Err(ApiError::bad_request(
+                "Content cannot be empty. Add text or HTML before saving.",
+            ));
         }
         (c, None)
     } else {
@@ -304,23 +328,31 @@ pub async fn index_document_upload(
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         warn!(error = %e, "multipart field read failed");
-        ApiError::bad_request("invalid multipart body")
+        ApiError::bad_request(
+            "Could not read the multipart form. Retry the upload and ensure the request is multipart/form-data.",
+        )
     })? {
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
             "file" => {
                 if file_bytes.is_some() {
-                    return Err(ApiError::bad_request("duplicate file field"));
+                    return Err(ApiError::bad_request(
+                        "The form contains more than one `file` field. Send a single file part.",
+                    ));
                 }
                 let bytes = field.bytes().await.map_err(|e| {
                     warn!(error = %e, "multipart file bytes read failed");
-                    ApiError::bad_request("invalid multipart body")
+                    ApiError::bad_request(
+                        "Could not read the multipart form. Retry the upload and ensure the request is multipart/form-data.",
+                    )
                 })?;
                 file_bytes = Some(bytes.to_vec());
             }
             "doc_id" => {
                 if doc_id_raw.is_some() {
-                    return Err(ApiError::bad_request("duplicate doc_id field"));
+                    return Err(ApiError::bad_request(
+                        "The form contains more than one `doc_id` field. Send a single doc_id value.",
+                    ));
                 }
                 doc_id_raw = Some(multipart_text(field, "doc_id").await?);
             }
@@ -338,14 +370,26 @@ pub async fn index_document_upload(
         Some(s) => {
             let n = s
                 .parse::<u64>()
-                .map_err(|_| ApiError::bad_request("invalid doc_id"))?;
+                .map_err(|_| {
+                    ApiError::bad_request(
+                        "`doc_id` must be a non-negative whole number (or omit / use 0 for a new document).",
+                    )
+                })?;
             Some(n)
         }
     };
 
     let content = if use_automatic_doc_id(doc_id) {
-        let bytes = file_bytes.ok_or_else(|| ApiError::bad_request("missing file"))?;
-        Some(String::from_utf8(bytes).map_err(|_| ApiError::bad_request("file must be utf-8"))?)
+        let bytes = file_bytes.ok_or_else(|| {
+            ApiError::bad_request(
+                "New documents need a `file` part in the multipart body. Add the file field and try again.",
+            )
+        })?;
+        Some(String::from_utf8(bytes).map_err(|_| {
+            ApiError::bad_request(
+                "The uploaded file must be valid UTF-8 text or HTML. Convert the encoding and try again.",
+            )
+        })?)
     } else {
         None
     };
@@ -379,7 +423,9 @@ pub async fn index_documents_bulk(
 ) -> Result<Json<IndexResponse>, ApiError> {
     const MAX_BATCH: usize = 200;
     if input.documents.is_empty() || input.documents.len() > MAX_BATCH {
-        return Err(ApiError::bad_request("invalid documents batch size"));
+        return Err(ApiError::bad_request(
+            "Bulk index expects between 1 and 200 documents in one request. Reduce or split the batch and try again.",
+        ));
     }
     for doc in &mut input.documents {
         doc.path = normalize_dir_path(&doc.path)?;
@@ -481,7 +527,9 @@ pub async fn search(
         .unwrap_or_default();
 
     if tag_filters.len() > MAX_SEARCH_TAG_FILTERS {
-        return Err(ApiError::bad_request("too many tag filters"));
+        return Err(ApiError::bad_request(
+            "Too many tag filters in this search. Remove some tag filters (comma-separated) and try again.",
+        ));
     }
     for t in &tag_filters {
         validate_tag_format(t)?;
@@ -490,7 +538,7 @@ pub async fn search(
     let q_trimmed = q.trim().to_string();
     if q_trimmed.is_empty() && path_filter.is_none() && tag_filters.is_empty() {
         return Err(ApiError::bad_request(
-            "search text or folder/tag filters required",
+            "Enter search text and/or pick a folder path or tag filter. At least one of these is required.",
         ));
     }
 
@@ -516,7 +564,9 @@ pub async fn search(
     .await
     .map_err(|_| ApiError::Internal)?
     .map_err(|e| match e {
-        SearchError::InvalidInput(msg) => ApiError::bad_request(msg),
+        SearchError::InvalidInput(msg) => {
+            ApiError::bad_request(user_message_for_search_query_error(&msg))
+        }
         _ => ApiError::Internal,
     })?;
 
@@ -567,7 +617,9 @@ pub async fn get_document(
     Path(doc_id): Path<u64>,
 ) -> Result<Json<DocumentDetailResponse>, ApiError> {
     if doc_id == 0 {
-        return Err(ApiError::bad_request("invalid doc_id"));
+        return Err(ApiError::bad_request(
+            "Document ID must be a positive number. Use the ID shown in search or the catalog.",
+        ));
     }
 
     let tenant_id = user.tenant_id;
@@ -594,7 +646,9 @@ pub async fn delete_document(
     Path(doc_id): Path<u64>,
 ) -> Result<StatusCode, ApiError> {
     if doc_id == 0 {
-        return Err(ApiError::bad_request("invalid doc_id"));
+        return Err(ApiError::bad_request(
+            "Document ID must be a positive number. Use the ID shown in search or the catalog.",
+        ));
     }
 
     let tenant_id = user.tenant_id;
