@@ -194,10 +194,22 @@ fn summarize_if_enabled(
     };
     let mut summary = String::new();
     match sm.lock() {
-        Ok(mut guard) => match guard.summarize(content) {
-            Ok(s) => summary = s,
-            Err(e) => warn!(error = %e, op, "summarizer failed"),
-        },
+        Ok(mut guard) => {
+            let t = std::time::Instant::now();
+            match guard.summarize(content) {
+                Ok(s) => {
+                    let elapsed = t.elapsed();
+                    tracing::info!(
+                        op,
+                        elapsed_ms = elapsed.as_millis(),
+                        summary_chars = s.len(),
+                        "summarize completed"
+                    );
+                    summary = s;
+                }
+                Err(e) => warn!(error = %e, op, "summarizer failed"),
+            }
+        }
         Err(_) => warn!(op, "summarizer lock poisoned"),
     }
     summary

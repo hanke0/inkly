@@ -293,7 +293,7 @@ impl Summarizer {
         let (body, _truncated) = clamp_chars(&plain, self.config.max_article_chars);
         let user = build_user_message(&body);
         let prompt = format_chat_prompt(&user);
-        tracing::info!(prompt = %prompt, "summarize prompt");
+        tracing::trace!(prompt = %prompt, "summarize prompt");
         let prompt_tokens = self
             .model
             .str_to_token(&prompt, AddBos::Never)
