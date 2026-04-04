@@ -6,4 +6,3 @@ members = [
   "crates/inkly-search",
   "crates/inkly-summarize",
 ]
-

@@ -8,7 +8,7 @@ use axum::response::Response;
 use base64::Engine;
 
 use crate::error::ApiError;
-use crate::i18n::{t, Msg};
+use crate::i18n::{Msg, t};
 use crate::locale::Locale;
 use crate::state::AppState;
 
@@ -44,13 +44,10 @@ pub async fn auth_middleware(
         .decode(b64)
         .map_err(|_| ApiError::unauthorized(t(locale, Msg::CredentialsDecode)))?;
 
-    let creds = String::from_utf8(decoded).map_err(|_| {
-        ApiError::unauthorized(t(locale, Msg::CredentialsDecode))
-    })?;
+    let creds = String::from_utf8(decoded)
+        .map_err(|_| ApiError::unauthorized(t(locale, Msg::CredentialsDecode)))?;
 
-    let (username, password) = creds
-        .split_once(':')
-        .unwrap_or((creds.as_str(), ""));
+    let (username, password) = creds.split_once(':').unwrap_or((creds.as_str(), ""));
 
     if !basic_credentials_match(
         username,

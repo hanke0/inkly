@@ -126,4 +126,3 @@ pub struct DocumentDetailResponse {
 fn default_limit() -> u32 {
     10
 }
-

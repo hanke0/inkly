@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use tantivy::collector::TopDocs;
 use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, RegexQuery, TermQuery};
 use tantivy::schema::{
-    Field, IndexRecordOption, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
+    FAST, Field, INDEXED, IndexRecordOption, STORED, STRING, TEXT, TextFieldIndexing, TextOptions,
     Value,
 };
-use tantivy::{doc, schema, Index, Term};
+use tantivy::{Index, Term, doc, schema};
 
 use crate::error::{Result, SearchError};
 use crate::storage_meta;
@@ -124,15 +124,11 @@ fn get_str_field(doc: &tantivy::TantivyDocument, field: Field) -> String {
 }
 
 fn get_u64_field(doc: &tantivy::TantivyDocument, field: Field) -> u64 {
-    doc.get_first(field)
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
+    doc.get_first(field).and_then(|v| v.as_u64()).unwrap_or(0)
 }
 
 fn get_i64_field(doc: &tantivy::TantivyDocument, field: Field) -> i64 {
-    doc.get_first(field)
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0)
+    doc.get_first(field).and_then(|v| v.as_i64()).unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -282,11 +278,7 @@ impl IndexManager {
             .next
             .checked_add(1)
             .ok_or_else(|| SearchError::InvalidInput("auto_increment overflow".into()))?;
-        storage_meta::persist_auto_increment(
-            &guard.version_path,
-            guard.data_version,
-            guard.next,
-        )?;
+        storage_meta::persist_auto_increment(&guard.version_path, guard.data_version, guard.next)?;
         Ok(id)
     }
 
@@ -632,7 +624,9 @@ impl IndexManager {
             return Ok(false);
         }
 
-        let mut writer = self.index.writer::<tantivy::TantivyDocument>(WRITER_HEAP_BYTES)?;
+        let mut writer = self
+            .index
+            .writer::<tantivy::TantivyDocument>(WRITER_HEAP_BYTES)?;
         writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc_id)))?;
         writer.commit()?;
 

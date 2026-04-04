@@ -28,4 +28,3 @@ impl From<tantivy::query::QueryParserError> for SearchError {
         SearchError::InvalidInput(value.to_string())
     }
 }
-

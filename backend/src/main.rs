@@ -8,8 +8,10 @@ mod routes;
 mod state;
 mod static_assets;
 
+use crate::locale::locale_middleware;
 use axum::Router;
 use axum::http::{HeaderValue, Method};
+use axum::middleware;
 use axum::routing::{get, post};
 use clap::Parser;
 use inkly_search::IndexManager;
@@ -19,8 +21,6 @@ use routes::{
     index_documents_bulk, search, session,
 };
 use state::AppState;
-use axum::middleware;
-use crate::locale::locale_middleware;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -73,8 +73,9 @@ fn main() {
             cpu,
             hf_cache,
         } => {
-
-            if let Err(e) = cli::run_summary_bench(file, model, max_article_chars, runs, cpu, hf_cache) {
+            if let Err(e) =
+                cli::run_summary_bench(file, model, max_article_chars, runs, cpu, hf_cache)
+            {
                 eprintln!("summary-bench: {e}");
                 std::process::exit(1);
             }

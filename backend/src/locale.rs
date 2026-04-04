@@ -1,6 +1,6 @@
 use axum::body::Body;
-use axum::http::header::ACCEPT_LANGUAGE;
 use axum::http::HeaderValue;
+use axum::http::header::ACCEPT_LANGUAGE;
 use axum::middleware::Next;
 use axum::response::Response;
 
@@ -71,7 +71,11 @@ fn parse_accept_language(raw: &str) -> Option<Locale> {
         }
         ranges.push(LangRange { tag, quality });
     }
-    ranges.sort_by(|a, b| b.quality.partial_cmp(&a.quality).unwrap_or(std::cmp::Ordering::Equal));
+    ranges.sort_by(|a, b| {
+        b.quality
+            .partial_cmp(&a.quality)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     for r in ranges {
         if let Some(loc) = match_primary_tag(r.tag) {
             return Some(loc);
@@ -107,10 +111,7 @@ mod tests {
 
     #[test]
     fn prefers_higher_quality() {
-        assert_eq!(
-            from_str("en;q=0.5, zh-CN;q=0.9"),
-            Locale::ZhHans
-        );
+        assert_eq!(from_str("en;q=0.5, zh-CN;q=0.9"), Locale::ZhHans);
     }
 
     #[test]

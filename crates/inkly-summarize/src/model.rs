@@ -325,7 +325,9 @@ impl ResponseParser {
         let Some(end) = self.text[start..].find(self.think_end_token) else {
             return self.text.trim().to_string();
         };
-        self.text[end+self.think_end_token.len()..].trim().to_string()
+        self.text[end + self.think_end_token.len()..]
+            .trim()
+            .to_string()
     }
 }
 

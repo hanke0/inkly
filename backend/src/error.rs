@@ -1,9 +1,9 @@
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Serialize;
 
-use crate::i18n::{search_query_parse_detail, t, Msg};
+use crate::i18n::{Msg, search_query_parse_detail, t};
 use crate::locale::Locale;
 
 use inkly_search::SearchError;
@@ -100,7 +100,10 @@ impl IntoResponse for ApiError {
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", msg),
         };
 
-        let body = Json(ErrorResponse { code, error: message });
+        let body = Json(ErrorResponse {
+            code,
+            error: message,
+        });
         (status, body).into_response()
     }
 }

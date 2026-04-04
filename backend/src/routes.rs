@@ -1,14 +1,14 @@
+use axum::Extension;
 use axum::extract::{Json, Multipart, Path, Query, State};
 use axum::http::StatusCode;
-use axum::Extension;
 use axum::response::IntoResponse;
 use serde::Serialize;
-use std::sync::{Arc, Mutex};
 use std::result::Result;
+use std::sync::{Arc, Mutex};
 
 use crate::auth::AuthUser;
-use crate::error::{map_index_error, map_search_error, ApiError, BULK_CONTENT_EMPTY_MARKER};
-use crate::i18n::{t, Msg};
+use crate::error::{ApiError, BULK_CONTENT_EMPTY_MARKER, map_index_error, map_search_error};
+use crate::i18n::{Msg, t};
 use crate::locale::Locale;
 use crate::state::AppState;
 
@@ -220,9 +220,9 @@ async fn perform_index_document(
     let summarizer = state.summarizer.clone();
 
     let (content, existing_summary) = if want_auto_id {
-        let c = input.content.ok_or_else(|| {
-            ApiError::bad_request(t(locale, Msg::NewDocNeedsContent))
-        })?;
+        let c = input
+            .content
+            .ok_or_else(|| ApiError::bad_request(t(locale, Msg::NewDocNeedsContent)))?;
         if c.trim().is_empty() {
             return Err(ApiError::bad_request(t(locale, Msg::BulkContentEmpty)));
         }
@@ -257,8 +257,8 @@ async fn perform_index_document(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
-        let summary = existing_summary
-            .unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, op));
+        let summary =
+            existing_summary.unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, op));
         let stats = index.index_document(
             &tenant_id,
             DocumentRow {
@@ -332,7 +332,10 @@ pub async fn index_document_upload(
             }
             "doc_id" => {
                 if doc_id_raw.is_some() {
-                    return Err(ApiError::bad_request(t(locale, Msg::MultipartMultipleDocId)));
+                    return Err(ApiError::bad_request(t(
+                        locale,
+                        Msg::MultipartMultipleDocId,
+                    )));
                 }
                 doc_id_raw = Some(multipart_text(field, "doc_id", locale).await?);
             }
@@ -356,12 +359,12 @@ pub async fn index_document_upload(
     };
 
     let content = if use_automatic_doc_id(doc_id) {
-        let bytes = file_bytes.ok_or_else(|| {
-            ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart))
-        })?;
-        Some(String::from_utf8(bytes).map_err(|_| {
-            ApiError::bad_request(t(locale, Msg::UploadedFileUtf8))
-        })?)
+        let bytes =
+            file_bytes.ok_or_else(|| ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart)))?;
+        Some(
+            String::from_utf8(bytes)
+                .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
+        )
     } else {
         None
     };
@@ -428,9 +431,7 @@ pub async fn index_documents_bulk(
             let (content, existing_summary) = if want_auto {
                 let c = d.content.unwrap_or_default();
                 if c.trim().is_empty() {
-                    return Err(SearchError::InvalidInput(
-                        BULK_CONTENT_EMPTY_MARKER.into(),
-                    ));
+                    return Err(SearchError::InvalidInput(BULK_CONTENT_EMPTY_MARKER.into()));
                 }
                 (c, None)
             } else {
@@ -441,8 +442,9 @@ pub async fn index_documents_bulk(
                 }
             };
             ids.push(doc_id);
-            let summary = existing_summary
-                .unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, "index_documents_bulk"));
+            let summary = existing_summary.unwrap_or_else(|| {
+                summarize_if_enabled(&summarizer, &content, "index_documents_bulk")
+            });
             rows.push(DocumentRow {
                 doc_id,
                 title: d.title,

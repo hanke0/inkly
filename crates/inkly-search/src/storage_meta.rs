@@ -133,9 +133,6 @@ mod tests {
         )
         .unwrap();
         let err = load_or_init_version_state(dir.path()).unwrap_err();
-        assert!(matches!(
-            err,
-            SearchError::StorageVersionMismatch { .. }
-        ));
+        assert!(matches!(err, SearchError::StorageVersionMismatch { .. }));
     }
 }

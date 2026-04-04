@@ -48,11 +48,9 @@ impl Config {
 
         let data_dir = data_dir();
 
-        let username = std::env::var("USERNAME")
-            .map_err(|_| "Missing USERNAME".to_string())?;
+        let username = std::env::var("USERNAME").map_err(|_| "Missing USERNAME".to_string())?;
 
-        let password = std::env::var("PASSWORD")
-            .map_err(|_| "Missing PASSWORD".to_string())?;
+        let password = std::env::var("PASSWORD").map_err(|_| "Missing PASSWORD".to_string())?;
 
         let max_body_bytes = std::env::var("MAX_BODY_BYTES")
             .ok()
