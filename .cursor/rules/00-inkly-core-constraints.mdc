@@ -26,6 +26,11 @@ alwaysApply: true
 - Backend API errors returned to users must include both what failed and a clear, safe next step (for example, "refresh and retry", "check input format", or "contact support").
 - Configure request size limits and rate limiting.
 
+# Internationalization (i18n)
+- Locale from `Accept-Language` (backend extension); frontend sends the same header as the UI locale.
+- Backend: `Msg` + `i18n::t`; new user-facing strings must include a translation for **every** supported locale in `t`, plus a safe next step where the copy is an error (see Security).
+- Frontend: `useI18n`; one bundle per language under `i18n/locales/` via dynamic `import()`. Any new display key or string must be added and translated in **all** locale files (and in `loadLocaleMessages` if you add a locale).
+
 # Performance
 - Minimize time and space complexity; prefer O(1) / O(log n) over O(n) where feasible.
 - **Rust**: reuse buffers, prefer iterators/streams over intermediate `Vec`s, use `Cow`/references when ownership is not required. Benchmark hot paths (request handling, search, indexing).
