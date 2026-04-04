@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use inkly_summarize::ModelSize;
+use inkly_summarize::ModelFamily;
 
 #[derive(Clone)]
 pub struct Config {
@@ -15,9 +15,9 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     /// When true, load the local LLM and populate the `summary` field on index routes. Default off.
     pub summarize_enabled: bool,
-    /// Which Qwen3.5 parameter size to load. Default: 0.8B.
-    /// Configured via `SUMMARIZE_MODEL` env var (e.g. `0.8b`, `2b`, `4b`, `9b`, `27b`, `35b`, `122b`).
-    pub summarize_model: ModelSize,
+    /// Which GGUF preset to load. Default: Qwen3.5 0.8B.
+    /// `SUMMARIZE_MODEL`: canonical id (see `inkly_summarize::ModelFamily` `Display`), e.g. `qwen3.5:0.8b`, `deepseek-r1:7b`, `gemma4:26b`, `gemmae2b`, `lfm2.5:1.2b`.
+    pub summarize_model: ModelFamily,
 }
 
 impl fmt::Debug for Config {
@@ -94,9 +94,9 @@ impl Config {
             ),
         };
 
-        let summarize_model: ModelSize = match std::env::var("SUMMARIZE_MODEL") {
+        let summarize_model: ModelFamily = match std::env::var("SUMMARIZE_MODEL") {
             Ok(raw) => raw.parse().map_err(|e: String| e)?,
-            Err(_) => ModelSize::default(),
+            Err(_) => ModelFamily::default(),
         };
 
         Ok(Self {

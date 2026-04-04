@@ -106,7 +106,7 @@ async fn run_server() {
         }
         let summarizer_cfg = SummarizerConfig {
             hf_hub_cache_dir: Some(hf_hub_cache),
-            ..SummarizerConfig::with_model_size(config.summarize_model)
+            ..SummarizerConfig::with_model(config.summarize_model)
         };
         match Summarizer::load(summarizer_cfg) {
             Ok(s) => {

@@ -7,9 +7,12 @@
 //! **Performance note:** run in release mode for practical throughput.
 
 mod error;
+mod model;
+mod postprocess;
 mod prompt;
 
 pub use error::SummarizeError;
+pub use model::ModelFamily;
 
 use hf_hub::{
     api::sync::{Api, ApiBuilder},
@@ -21,121 +24,22 @@ use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::{AddBos, LlamaModel};
 use llama_cpp_2::sampling::LlamaSampler;
-use std::fmt;
 use std::io::Write;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tracing::instrument;
 
-use crate::prompt::{build_user_message, format_chat_prompt};
+use crate::prompt::build_user_message;
 
 /// Hard cap on the number of tokens generated after prefill.
 ///
 /// This is intentionally not configurable via API/CLI to keep decode latency bounded.
 pub const INTERNAL_MAX_NEW_TOKENS: usize = 1024;
 
-/// Supported Qwen3.5 model parameter sizes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ModelSize {
-    /// Qwen3.5-0.8B
-    Q0_8B,
-    /// Qwen3.5-2B
-    Q2B,
-    /// Qwen3.5-4B
-    Q4B,
-    /// Qwen3.5-9B
-    Q9B,
-    /// Qwen3.5-27B
-    Q27B,
-    /// Qwen3.5-35B-A3B (MoE)
-    Q35B,
-    /// Qwen3.5-122B-A10B (MoE)
-    Q122B,
-}
-
-impl ModelSize {
-    pub const ALL: &[ModelSize] = &[
-        ModelSize::Q0_8B,
-        ModelSize::Q2B,
-        ModelSize::Q4B,
-        ModelSize::Q9B,
-        ModelSize::Q27B,
-        ModelSize::Q35B,
-        ModelSize::Q122B,
-    ];
-
-    /// Hugging Face repository hosting the Q4_K_M GGUF for this size.
-    pub fn gguf_repo(&self) -> &'static str {
-        match self {
-            ModelSize::Q0_8B => "unsloth/Qwen3.5-0.8B-GGUF",
-            ModelSize::Q2B => "unsloth/Qwen3.5-2B-GGUF",
-            ModelSize::Q4B => "unsloth/Qwen3.5-4B-GGUF",
-            ModelSize::Q9B => "unsloth/Qwen3.5-9B-GGUF",
-            ModelSize::Q27B => "unsloth/Qwen3.5-27B-GGUF",
-            ModelSize::Q35B => "unsloth/Qwen3.5-35B-A3B-GGUF",
-            ModelSize::Q122B => "unsloth/Qwen3.5-122B-A10B-GGUF",
-        }
-    }
-
-    /// GGUF filename for the Q4_K_M quantization of this size.
-    pub fn gguf_filename(&self) -> &'static str {
-        match self {
-            ModelSize::Q0_8B => "Qwen3.5-0.8B-Q4_K_M.gguf",
-            ModelSize::Q2B => "Qwen3.5-2B-Q4_K_M.gguf",
-            ModelSize::Q4B => "Qwen3.5-4B-Q4_K_M.gguf",
-            ModelSize::Q9B => "Qwen3.5-9B-Q4_K_M.gguf",
-            ModelSize::Q27B => "Qwen3.5-27B-Q4_K_M.gguf",
-            ModelSize::Q35B => "Qwen3.5-35B-A3B-Q4_K_M.gguf",
-            ModelSize::Q122B => "Qwen3.5-122B-A10B-Q4_K_M.gguf",
-        }
-    }
-}
-
-impl Default for ModelSize {
-    fn default() -> Self {
-        ModelSize::Q0_8B
-    }
-}
-
-impl fmt::Display for ModelSize {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let label = match self {
-            ModelSize::Q0_8B => "0.8b",
-            ModelSize::Q2B => "2b",
-            ModelSize::Q4B => "4b",
-            ModelSize::Q9B => "9b",
-            ModelSize::Q27B => "27b",
-            ModelSize::Q35B => "35b",
-            ModelSize::Q122B => "122b",
-        };
-        f.write_str(label)
-    }
-}
-
-impl FromStr for ModelSize {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "0.8b" | "0.8" => Ok(ModelSize::Q0_8B),
-            "2b" | "2" => Ok(ModelSize::Q2B),
-            "4b" | "4" => Ok(ModelSize::Q4B),
-            "9b" | "9" => Ok(ModelSize::Q9B),
-            "27b" | "27" => Ok(ModelSize::Q27B),
-            "35b" | "35" => Ok(ModelSize::Q35B),
-            "122b" | "122" => Ok(ModelSize::Q122B),
-            other => Err(format!(
-                "unknown model size `{other}`; valid values: 0.8b, 2b, 4b, 9b, 27b, 35b, 122b"
-            )),
-        }
-    }
-}
-
 /// Configuration for model files, decoding, and safety limits.
 #[derive(Debug, Clone)]
 pub struct SummarizerConfig {
-    pub model_size: ModelSize,
+    pub model: ModelFamily,
     /// Repo that hosts the GGUF file when `gguf_path` is `None`.
     pub gguf_repo: String,
     pub gguf_revision: String,
@@ -149,22 +53,19 @@ pub struct SummarizerConfig {
     pub prefer_gpu: bool,
     /// Hard cap on document characters (Unicode scalar count) fed to the model.
     pub max_article_chars: usize,
-    pub temperature: f64,
-    pub top_p: Option<f64>,
-    pub top_k: Option<usize>,
     pub repeat_penalty: f32,
     pub repeat_last_n: usize,
     pub seed: u64,
 }
 
 impl SummarizerConfig {
-    /// Create a config for the given model size with sensible defaults.
-    pub fn with_model_size(size: ModelSize) -> Self {
+    /// Create a config for the given preset with sensible defaults (Q4_K_M where applicable).
+    pub fn with_model(model: ModelFamily) -> Self {
         Self {
-            model_size: size,
-            gguf_repo: size.gguf_repo().to_string(),
+            model,
+            gguf_repo: model.gguf_repo().to_string(),
             gguf_revision: "main".to_string(),
-            gguf_filename: size.gguf_filename().to_string(),
+            gguf_filename: model.gguf_filename().to_string(),
             ..Self::default()
         }
     }
@@ -172,19 +73,16 @@ impl SummarizerConfig {
 
 impl Default for SummarizerConfig {
     fn default() -> Self {
-        let size = ModelSize::default();
+        let model = ModelFamily::default();
         Self {
-            model_size: size,
-            gguf_repo: size.gguf_repo().to_string(),
+            model,
+            gguf_repo: model.gguf_repo().to_string(),
             gguf_revision: "main".to_string(),
-            gguf_filename: size.gguf_filename().to_string(),
+            gguf_filename: model.gguf_filename().to_string(),
             gguf_path: None,
             hf_hub_cache_dir: None,
             prefer_gpu: true,
             max_article_chars: 6_144,
-            temperature: 0.0,
-            top_p: None,
-            top_k: None,
             repeat_penalty: 1.0,
             repeat_last_n: 64,
             seed: 42,
@@ -292,7 +190,7 @@ impl Summarizer {
         }
         let (body, _truncated) = clamp_chars(&plain, self.config.max_article_chars);
         let user = build_user_message(&body);
-        let prompt = format_chat_prompt(&user);
+        let prompt = self.config.model.format_chat_prompt(&user);
         tracing::trace!(prompt = %prompt, "summarize prompt");
         let prompt_tokens = self
             .model
@@ -350,8 +248,11 @@ impl Summarizer {
             text.push_str(&piece);
             generated_tokens += 1;
 
-            if text.contains("<|im_end|>") || text.contains("</s>") {
-                text = text.replace("<|im_end|>", "").replace("</s>", "");
+            if self
+                .config
+                .model
+                .strip_stream_delimiters_and_should_stop(&mut text)
+            {
                 break;
             }
 
@@ -377,7 +278,7 @@ impl Summarizer {
             decode,
         });
 
-        Ok((strip_think_sections(&text), bench))
+        Ok((self.config.model.postprocess_output(&text), bench))
     }
 }
 
@@ -562,7 +463,8 @@ fn clamp_chars(s: &str, max: usize) -> (String, bool) {
 }
 
 fn build_sampler(config: &SummarizerConfig) -> LlamaSampler {
-    if config.temperature <= 0.0 {
+    let s = config.model.recommended_sampling();
+    if s.temperature <= 0.0 && s.top_p.is_none() && s.top_k.is_none() {
         return LlamaSampler::greedy();
     }
 
@@ -574,34 +476,15 @@ fn build_sampler(config: &SummarizerConfig) -> LlamaSampler {
         0.0,
         0.0,
     ));
-    if let Some(k) = config.top_k {
-        samplers.push(LlamaSampler::top_k(k as i32));
+    if let Some(k) = s.top_k.filter(|&k| k > 0) {
+        samplers.push(LlamaSampler::top_k(k));
     }
-    if let Some(p) = config.top_p {
-        samplers.push(LlamaSampler::top_p(p as f32, 1));
+    if let Some(p) = s.top_p {
+        samplers.push(LlamaSampler::top_p(p, 1));
     }
-    samplers.push(LlamaSampler::temp(config.temperature as f32));
+    samplers.push(LlamaSampler::temp(s.temperature));
     samplers.push(LlamaSampler::dist(config.seed as u32));
     LlamaSampler::chain_simple(samplers)
-}
-
-fn strip_think_sections(text: &str) -> String {
-    let mut out = text.to_string();
-
-    // Some Qwen variants may still emit explicit reasoning blocks despite `/no_think`.
-    // Remove all complete `<think>...</think>` spans so persisted summaries stay clean.
-    loop {
-        let Some(start) = out.find("<think>") else {
-            break;
-        };
-        let Some(end_rel) = out[start..].find("</think>") else {
-            break;
-        };
-        let end = start + end_rel + "</think>".len();
-        out.replace_range(start..end, "");
-    }
-
-    out.trim().to_string()
 }
 
 #[cfg(test)]
@@ -613,18 +496,6 @@ mod tests {
         let (s, t) = clamp_chars("abcde", 3);
         assert!(t);
         assert_eq!(s, "abc");
-    }
-
-    #[test]
-    fn strip_think_sections_removes_reasoning_block() {
-        let got = strip_think_sections("<think>hidden steps</think>\nfinal answer");
-        assert_eq!(got, "final answer");
-    }
-
-    #[test]
-    fn strip_think_sections_keeps_plain_text() {
-        let got = strip_think_sections("plain summary");
-        assert_eq!(got, "plain summary");
     }
 
     #[test]

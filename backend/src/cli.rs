@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use inkly_summarize::{ModelSize, Summarizer, SummarizerConfig, INTERNAL_MAX_NEW_TOKENS};
+use inkly_summarize::{ModelFamily, Summarizer, SummarizerConfig, INTERNAL_MAX_NEW_TOKENS};
 
 use crate::config;
 
@@ -26,9 +26,9 @@ pub enum Commands {
         /// Path to a file whose contents will be used as the article (default: built-in English sample).
         #[arg(long)]
         file: Option<PathBuf>,
-        /// Model parameter size: 0.8b (default), 2b, 4b, 9b, 27b, 35b, 122b.
-        #[arg(long, default_value = "0.8b")]
-        model: ModelSize,
+        /// Summarizer preset (canonical id, same as `Display`: e.g. qwen3.5:0.8b, deepseek-r1:7b).
+        #[arg(long, default_value = "qwen3.5:0.8b")]
+        model: ModelFamily,
         /// Cap article length (Unicode chars); prefill cost scales roughly with the square of token count on CPU.
         #[arg(long)]
         max_article_chars: Option<usize>,
@@ -46,7 +46,7 @@ pub enum Commands {
 
 pub fn run_summary_bench(
     file: Option<PathBuf>,
-    model: ModelSize,
+    model: ModelFamily,
     max_article_chars: Option<usize>,
     runs: u32,
     cpu: bool,
@@ -59,7 +59,7 @@ pub fn run_summary_bench(
     let mut cfg = SummarizerConfig {
         hf_hub_cache_dir: Some(cache),
         prefer_gpu: !cpu,
-        ..SummarizerConfig::with_model_size(model)
+        ..SummarizerConfig::with_model(model)
     };
     if let Some(n) = max_article_chars {
         cfg.max_article_chars = n.max(256);
