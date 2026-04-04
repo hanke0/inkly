@@ -4,12 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import { setPreferredAcceptLanguage } from "../api";
-import { type AppLocale, interpolate, MESSAGES, type MessageKey } from "./strings";
+import { interpolate, loadLocaleMessages, type AppLocale, type MessageKey } from "./strings";
 
 export type { AppLocale, MessageKey };
 
@@ -52,6 +53,12 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<AppLocale>(() => localeFromNavigator());
+  const [bundle, setBundle] = useState<{
+    loc: AppLocale;
+    messages: Record<MessageKey, string>;
+  } | null>(null);
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
 
   const setLocale = useCallback((loc: AppLocale) => {
     setLocaleState(loc);
@@ -61,15 +68,36 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     setPreferredAcceptLanguage(acceptLanguageHeader(locale));
   }, [locale]);
 
-  const value = useMemo((): I18nContextValue => {
-    const table = MESSAGES[locale];
+  useEffect(() => {
+    const requested = locale;
+    void loadLocaleMessages(requested).then((table) => {
+      if (localeRef.current !== requested) {
+        return;
+      }
+      setBundle({ loc: requested, messages: table });
+    });
+  }, [locale]);
+
+  const value = useMemo((): I18nContextValue | null => {
+    if (!bundle || bundle.loc !== locale) {
+      return null;
+    }
+    const { messages } = bundle;
     return {
       locale,
       setLocale,
-      t: (key) => table[key],
-      tf: (key, vars) => interpolate(table[key], vars),
+      t: (key) => messages[key],
+      tf: (key, vars) => interpolate(messages[key], vars),
     };
-  }, [locale, setLocale]);
+  }, [bundle, locale, setLocale]);
+
+  if (!value) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
+        Loading…
+      </div>
+    );
+  }
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
