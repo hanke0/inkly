@@ -2,10 +2,12 @@ import { useState } from "react";
 
 import { search } from "../api";
 import { DEFAULT_SEARCH_LIMIT, type BrandHeaderSearchProps } from "../components/BrandHeader";
+import { useI18n } from "../i18n/context";
 import { extractErrorMessage } from "../lib/errors";
 import type { SearchQuery, SearchResponse } from "../types";
 
 export function useSearch(catalogPath: string) {
+  const { t, tf } = useI18n();
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(DEFAULT_SEARCH_LIMIT);
   const [limitToFolder, setLimitToFolder] = useState(true);
@@ -31,7 +33,7 @@ export function useSearch(catalogPath: string) {
 
     if (!trimmed && !usePath && tagParts.length === 0) {
       setLoading(false);
-      setError("Enter keywords, tags (in settings), or limit to the current folder.");
+      setError(t("search.enterCriteria"));
       return;
     }
 
@@ -51,10 +53,10 @@ export function useSearch(catalogPath: string) {
       summaryParts.push(trimmed);
     }
     if (usePath) {
-      summaryParts.push(`in ${catalogPath}`);
+      summaryParts.push(tf("search.inPath", { path: catalogPath }));
     }
     if (tagParts.length > 0) {
-      summaryParts.push(`tags: ${tagParts.join(", ")}`);
+      summaryParts.push(`${t("search.tagsPrefix")}${tagParts.join(", ")}`);
     }
     setSearchSummary(summaryParts.length > 0 ? summaryParts.join(" · ") : undefined);
 
@@ -63,7 +65,7 @@ export function useSearch(catalogPath: string) {
       setResults(res);
       setResultsOpen(true);
     } catch (err) {
-      setError(extractErrorMessage(err, "Search request failed."));
+      setError(extractErrorMessage(err, t("errors.searchFailed")));
     } finally {
       setLoading(false);
     }

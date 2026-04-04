@@ -8,6 +8,8 @@ use axum::response::Response;
 use base64::Engine;
 
 use crate::error::ApiError;
+use crate::i18n::{t, Msg};
+use crate::locale::Locale;
 use crate::state::AppState;
 
 #[derive(Clone, Debug)]
@@ -21,37 +23,29 @@ pub async fn auth_middleware(
     mut req: axum::http::Request<Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
+    let locale = req
+        .extensions()
+        .get::<Locale>()
+        .copied()
+        .unwrap_or_default();
+
     let auth_header = req
         .headers()
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| {
-            ApiError::unauthorized(
-                "Sign-in required. Send an `Authorization: Basic …` header or open the app and sign in again.",
-            )
-        })?;
+        .ok_or_else(|| ApiError::unauthorized(t(locale, Msg::SignInRequired)))?;
 
     let b64 = auth_header
         .strip_prefix("Basic ")
-        .ok_or_else(|| {
-            ApiError::unauthorized(
-                "Authorization must use Basic authentication (`Authorization: Basic <base64>`). Check the header format.",
-            )
-        })?
+        .ok_or_else(|| ApiError::unauthorized(t(locale, Msg::BasicScheme)))?
         .trim();
 
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|_| {
-            ApiError::unauthorized(
-                "Credentials could not be decoded. Re-enter your username and password and try again.",
-            )
-        })?;
+        .map_err(|_| ApiError::unauthorized(t(locale, Msg::CredentialsDecode)))?;
 
     let creds = String::from_utf8(decoded).map_err(|_| {
-        ApiError::unauthorized(
-            "Credentials could not be decoded. Re-enter your username and password and try again.",
-        )
+        ApiError::unauthorized(t(locale, Msg::CredentialsDecode))
     })?;
 
     let (username, password) = creds
@@ -64,9 +58,7 @@ pub async fn auth_middleware(
         state.expected_username(),
         state.expected_password(),
     ) {
-        return Err(ApiError::unauthorized(
-            "Username or password did not match the server configuration. Check your credentials and try again.",
-        ));
+        return Err(ApiError::unauthorized(t(locale, Msg::CredentialsMismatch)));
     }
 
     let user = AuthUser {

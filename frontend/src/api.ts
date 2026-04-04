@@ -11,6 +11,13 @@ import type {
 
 type ErrorBody = { error?: string };
 
+/** When set, sent as `Accept-Language` on API calls (browser default is overridden). */
+let preferredAcceptLanguage: string | null = null;
+
+export function setPreferredAcceptLanguage(value: string | null): void {
+  preferredAcceptLanguage = value;
+}
+
 const LS_USERNAME_KEY = "inkly.basic.username";
 const LS_PASSWORD_KEY = "inkly.basic.password";
 
@@ -44,6 +51,9 @@ function applyBasicAuth(headers: Headers): void {
 async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
   const headers = new Headers(init.headers);
   applyBasicAuth(headers);
+  if (preferredAcceptLanguage) {
+    headers.set("Accept-Language", preferredAcceptLanguage);
+  }
 
   const res = await fetch(path, { ...init, headers });
 
@@ -152,6 +162,9 @@ export function clearStoredCredentials(): void {
 export async function verifyLogin(username: string, password: string): Promise<boolean> {
   const headers = new Headers();
   headers.set("Authorization", `Basic ${utf8ToBase64(`${username.trim()}:${password}`)}`);
+  if (preferredAcceptLanguage) {
+    headers.set("Accept-Language", preferredAcceptLanguage);
+  }
   const res = await fetch("/v1/session", { method: "GET", headers });
   return res.ok;
 }

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { indexDocument, indexDocumentUpload } from "../api";
+import { useI18n } from "../i18n/context";
 import { ensureUtf8File } from "../lib/encoding";
 import { htmlToMarkdown, isHtmlFile, readFileAsText } from "../lib/htmlToMarkdown";
 import { extractErrorMessage } from "../lib/errors";
@@ -13,6 +14,7 @@ export type IndexSuccessContext = {
 export function useNewDocumentForm(
   onSuccess: (res: IndexResponse, ctx: IndexSuccessContext) => void,
 ) {
+  const { t } = useI18n();
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
   const [editingDocId, setEditingDocId] = useState<number | null>(null);
@@ -64,7 +66,7 @@ export function useNewDocumentForm(
       clearFileInput();
       setContentMode("editor");
     } catch {
-      setFormError("Failed to convert HTML to Markdown.");
+      setFormError(t("form.convertHtmlFailed"));
     } finally {
       setConverting(false);
     }
@@ -116,7 +118,7 @@ export function useNewDocumentForm(
     const updateId = editingDocId;
 
     if (!title.trim()) {
-      setFormError("Title is required.");
+      setFormError(t("form.titleRequired"));
       setLoading(false);
       return;
     }
@@ -135,7 +137,7 @@ export function useNewDocumentForm(
         res = await indexDocument(payload);
       } else if (contentFile) {
         if (contentFile.size === 0) {
-          setFormError("The uploaded file is empty.");
+          setFormError(t("form.uploadEmpty"));
           setLoading(false);
           return;
         }
@@ -150,7 +152,7 @@ export function useNewDocumentForm(
         res = await indexDocumentUpload(fd);
       } else if (contentMode === "editor") {
         if (!content.trim()) {
-          setFormError("Add content in the text area or upload a text / HTML file.");
+          setFormError(t("form.addContentOrUpload"));
           setLoading(false);
           return;
         }
@@ -164,13 +166,13 @@ export function useNewDocumentForm(
         };
         res = await indexDocument(payload);
       } else {
-        setFormError("Upload a file or switch to the editor to write content.");
+        setFormError(t("form.uploadOrEditor"));
         setLoading(false);
         return;
       }
       onSuccessRef.current(res, updateId != null ? { updatedDocId: updateId } : {});
     } catch (err) {
-      setFormError(extractErrorMessage(err, "Index request failed."));
+      setFormError(extractErrorMessage(err, t("errors.indexFailed")));
     } finally {
       setLoading(false);
     }

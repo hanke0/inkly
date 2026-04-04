@@ -9,11 +9,13 @@ import { SidebarLayout } from "./components/SidebarLayout";
 import { useCatalog } from "./hooks/useCatalog";
 import { useNewDocumentForm } from "./hooks/useNewDocumentForm";
 import { useSearch } from "./hooks/useSearch";
+import { useI18n } from "./i18n/context";
 import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
 import { extractErrorMessage } from "./lib/errors";
 import type { DocumentDetailResponse } from "./types";
 
 export default function DocumentView() {
+  const { t, tf } = useI18n();
   const { docId: docIdParam } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -32,7 +34,7 @@ export default function DocumentView() {
       void fetchDocument(docId)
         .then((d) => setDoc(d))
         .catch((err) =>
-          setError(extractErrorMessage(err, "Failed to refresh document.")),
+          setError(extractErrorMessage(err, t("doc.refreshFailed"))),
         );
     }
   });
@@ -44,7 +46,7 @@ export default function DocumentView() {
 
   useEffect(() => {
     if (!Number.isFinite(docId) || docId < 1) {
-      setError("Invalid document id.");
+      setError(t("doc.invalidId"));
       setLoading(false);
       return;
     }
@@ -61,7 +63,7 @@ export default function DocumentView() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(extractErrorMessage(err, "Failed to load document."));
+          setError(extractErrorMessage(err, t("doc.loadFailed")));
         }
       })
       .finally(() => {
@@ -96,8 +98,9 @@ export default function DocumentView() {
     if (!doc) {
       return;
     }
-    const label = doc.title.trim() || `Document ${doc.doc_id}`;
-    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) {
+    const label =
+      doc.title.trim() || tf("doc.documentFallback", { id: doc.doc_id });
+    if (!window.confirm(tf("doc.deleteConfirm", { title: label }))) {
       return;
     }
     setError("");
@@ -106,7 +109,7 @@ export default function DocumentView() {
       void reloadCatalog();
       navigate({ pathname: "/", search: `?path=${encodeURIComponent(returnPath)}` });
     } catch (err) {
-      setError(extractErrorMessage(err, "Delete failed."));
+      setError(extractErrorMessage(err, t("doc.deleteFailed")));
     }
   }
 
@@ -142,7 +145,7 @@ export default function DocumentView() {
           ) : null}
 
           {loading ? (
-            <p className="text-sm text-inkly-muted">Loading…</p>
+            <p className="text-sm text-inkly-muted">{t("doc.loading")}</p>
           ) : doc ? (
             <article
               className={
@@ -159,14 +162,14 @@ export default function DocumentView() {
                     onClick={openEditDocumentModal}
                     className="rounded-md border border-inkly-border/90 bg-white px-2.5 py-1 text-[12px] font-medium text-inkly-ink shadow-sm transition hover:border-inkly-accent/50 hover:bg-inkly-paper-warm/30"
                   >
-                    Edit
+                    {t("doc.edit")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void confirmDeleteDocument()}
                     className="rounded-md border border-red-200/90 bg-white px-2.5 py-1 text-[12px] font-medium text-red-800 shadow-sm transition hover:border-red-300 hover:bg-red-50/80"
                   >
-                    Delete
+                    {t("doc.delete")}
                   </button>
                 </div>
               </div>
@@ -218,7 +221,7 @@ export default function DocumentView() {
                           <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
                           <polyline points="14 2 14 8 20 8" />
                         </svg>
-                        Summary
+                        {t("doc.metaSummary")}
                       </button>
                     ) : null}
                     {doc.note ? (
@@ -235,7 +238,7 @@ export default function DocumentView() {
                           <path d="M12 20h9" />
                           <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                         </svg>
-                        Note
+                        {t("doc.metaNote")}
                       </button>
                     ) : null}
                   </div>
@@ -254,7 +257,7 @@ export default function DocumentView() {
                             openPanel === "summary" ? "text-inkly-accent/70" : "text-inkly-muted/60"
                           }`}
                         >
-                          {openPanel === "summary" ? "Summary" : "Note"}
+                          {openPanel === "summary" ? t("doc.metaSummary") : t("doc.metaNote")}
                         </p>
                         <div className="inkly-reading__meta">
                           {openPanel === "summary" ? doc.summary : doc.note}

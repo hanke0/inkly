@@ -3,7 +3,13 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 
+use crate::i18n::{search_query_parse_detail, t, Msg};
+use crate::locale::Locale;
+
 use inkly_search::SearchError;
+
+/// Internal marker for empty bulk document content; replaced with a localized message in [`map_index_error`].
+pub(crate) const BULK_CONTENT_EMPTY_MARKER: &str = "inkly::bulk_content_empty";
 
 /// JSON error body for all API failures. `error` is safe to show to users; `code` is stable for clients.
 #[derive(Clone, Debug, Serialize)]
@@ -16,8 +22,8 @@ pub struct ErrorResponse {
 pub enum ApiError {
     Unauthorized(String),
     BadRequest(String),
-    NotFound,
-    Internal,
+    NotFound(String),
+    Internal(String),
 }
 
 impl ApiError {
@@ -28,38 +34,61 @@ impl ApiError {
     pub fn bad_request(msg: impl Into<String>) -> Self {
         Self::BadRequest(msg.into())
     }
+
+    pub fn not_found(locale: Locale) -> Self {
+        Self::NotFound(t(locale, Msg::NotFoundResource).to_string())
+    }
+
+    pub fn internal(locale: Locale) -> Self {
+        Self::Internal(t(locale, Msg::InternalServer).to_string())
+    }
 }
 
-impl From<SearchError> for ApiError {
-    fn from(value: SearchError) -> Self {
-        match value {
-            SearchError::InvalidInput(msg) => {
-                tracing::warn!(%msg, "invalid search/index input");
-                ApiError::BadRequest(msg)
-            }
-            SearchError::StorageVersionMismatch { expected, found } => {
-                tracing::error!(expected, found, "storage data_version mismatch");
-                ApiError::Internal
-            }
-            SearchError::LockPoisoned => {
-                tracing::error!("index layer mutex poisoned");
-                ApiError::Internal
-            }
-            other => {
-                tracing::error!(error = %other, "search/index operation failed");
-                ApiError::Internal
-            }
+/// Maps search-layer errors for `/v1/search` (query parse messages are user-facing).
+pub fn map_search_error(e: SearchError, locale: Locale) -> ApiError {
+    match e {
+        SearchError::InvalidInput(msg) => {
+            tracing::warn!(%msg, "invalid search query input");
+            ApiError::bad_request(search_query_parse_detail(locale, &msg))
+        }
+        SearchError::StorageVersionMismatch { expected, found } => {
+            tracing::error!(expected, found, "storage data_version mismatch");
+            ApiError::internal(locale)
+        }
+        SearchError::LockPoisoned => {
+            tracing::error!("index layer mutex poisoned");
+            ApiError::internal(locale)
+        }
+        other => {
+            tracing::error!(error = %other, "search operation failed");
+            ApiError::internal(locale)
         }
     }
 }
 
-/// User-facing text when Tantivy/query parsing fails on `/v1/search` only.
-pub(crate) fn user_message_for_search_query_error(raw: &str) -> String {
-    let t = raw.trim();
-    if t.is_empty() {
-        return "Search query could not be parsed. Simplify the query and try again.".to_string();
+/// Maps search-layer errors for indexing and storage paths (hide raw internal strings).
+pub fn map_index_error(e: SearchError, locale: Locale) -> ApiError {
+    match e {
+        SearchError::InvalidInput(msg) if msg == BULK_CONTENT_EMPTY_MARKER => {
+            ApiError::bad_request(t(locale, Msg::BulkContentEmpty).to_string())
+        }
+        SearchError::InvalidInput(msg) => {
+            tracing::warn!(%msg, "invalid index input");
+            ApiError::bad_request(t(locale, Msg::InvalidRequestGeneric).to_string())
+        }
+        SearchError::StorageVersionMismatch { expected, found } => {
+            tracing::error!(expected, found, "storage data_version mismatch");
+            ApiError::internal(locale)
+        }
+        SearchError::LockPoisoned => {
+            tracing::error!("index layer mutex poisoned");
+            ApiError::internal(locale)
+        }
+        other => {
+            tracing::error!(error = %other, "index operation failed");
+            ApiError::internal(locale)
+        }
     }
-    format!("Search query could not be parsed ({t}). Adjust the syntax and try again.")
 }
 
 impl IntoResponse for ApiError {
@@ -67,18 +96,8 @@ impl IntoResponse for ApiError {
         let (status, code, message) = match self {
             ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "unauthorized", msg),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg),
-            ApiError::NotFound => (
-                StatusCode::NOT_FOUND,
-                "not_found",
-                "The requested resource was not found. Check the document ID or path and try again."
-                    .to_string(),
-            ),
-            ApiError::Internal => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal_error",
-                "Something went wrong on the server. Please try again in a moment; if the problem continues, contact support."
-                    .to_string(),
-            ),
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg),
+            ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", msg),
         };
 
         let body = Json(ErrorResponse { code, error: message });

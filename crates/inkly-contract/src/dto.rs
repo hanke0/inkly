@@ -74,6 +74,8 @@ pub struct SearchResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionResponse {
     pub ok: bool,
+    /// Resolved from the request `Accept-Language` header (`en`, `zh-Hans`, …).
+    pub locale: String,
 }
 
 /// `GET /v1/catalog` — list indexed subdirectories and document titles under a logical path.

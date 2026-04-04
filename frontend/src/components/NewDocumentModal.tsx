@@ -2,6 +2,7 @@ import { useId } from "react";
 
 import { IndexDocumentForm } from "./IndexDocumentForm";
 import { useModalBehavior } from "../hooks/useModalBehavior";
+import { useI18n } from "../i18n/context";
 import type { NewDocumentFormState } from "../hooks/useNewDocumentForm";
 
 type NewDocumentModalProps = {
@@ -11,6 +12,7 @@ type NewDocumentModalProps = {
 };
 
 export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps) {
+  const { t } = useI18n();
   const titleId = useId();
   useModalBehavior(open, onClose);
 
@@ -39,13 +41,13 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-inkly-line px-4 py-3 sm:px-5">
           <h2 id={titleId} className="font-inkly-read-ui text-base font-semibold text-inkly-ink">
-            {form.isEditing ? "Edit document" : "New document"}
+            {form.isEditing ? t("modal.editDoc") : t("modal.newDoc")}
           </h2>
           <button
             type="button"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-inkly-muted transition-colors hover:bg-inkly-border-soft hover:text-inkly-ink"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("modal.closeAria")}
           >
             <svg
               width="18"

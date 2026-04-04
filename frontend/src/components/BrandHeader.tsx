@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { useI18n } from "../i18n/context";
+
 /** Default search options; keep in sync with initial state in Dashboard / DocumentView. */
 export const DEFAULT_SEARCH_LIMIT = 10;
 
@@ -84,6 +86,7 @@ function searchSettingsDirty(search: BrandHeaderSearchProps): boolean {
 
 /** Left rail: title and search. */
 export function BrandHeader({ search }: BrandHeaderProps) {
+  const { t } = useI18n();
   const inputId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -154,11 +157,11 @@ export function BrandHeader({ search }: BrandHeaderProps) {
           <div className="relative w-full min-w-0">
             <div className="relative z-0 flex min-w-0 flex-1 items-stretch overflow-hidden rounded-lg border border-inkly-border/80 bg-inkly-paper/90 focus-within:border-inkly-accent focus-within:ring-1 focus-within:ring-inkly-accent/30">
               <label htmlFor={inputId} className="sr-only">
-                Search the archive
+                {t("header.searchArchive")}
               </label>
               <button
                 type="submit"
-                aria-label="Search"
+                aria-label={t("header.searchLabel")}
                 disabled={Boolean(search.loading)}
                 className="flex shrink-0 items-center border-0 bg-transparent py-1.5 pl-2 pr-0.5 text-inkly-muted transition-colors hover:text-inkly-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -173,7 +176,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                 className="min-w-0 flex-1 border-0 bg-transparent py-1.5 pl-0.5 pr-1 text-xs text-inkly-ink outline-none placeholder:text-inkly-faint disabled:opacity-60"
                 value={search.q}
                 onChange={(e) => search.onQChange(e.target.value)}
-                placeholder="Search…"
+                placeholder={t("header.placeholder")}
               />
               <div className="relative z-10 flex shrink-0 items-center pr-1.5">
                 <button
@@ -183,14 +186,12 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                   aria-expanded={optionsOpen}
                   aria-haspopup="dialog"
                   aria-label={
-                    settingsDirty
-                      ? "Search settings, non-default result limit"
-                      : "Search settings"
+                    settingsDirty ? t("header.searchSettingsDirty") : t("header.searchSettings")
                   }
                   title={
                     settingsDirty
-                      ? "Search settings (result limit differs from default)"
-                      : "Search settings"
+                      ? t("header.searchSettingsDirtyTitle")
+                      : t("header.searchSettings")
                   }
                   onClick={() => setOptionsOpen((o) => !o)}
                 >
@@ -217,13 +218,13 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                 ref={optionsPanelRef}
                 className="absolute right-0 top-[calc(100%+4px)] z-40 w-52 rounded-lg border border-inkly-border bg-inkly-paper p-2.5 shadow-md"
                 role="dialog"
-                aria-label="Search settings"
+                aria-label={t("header.settingsDialog")}
               >
                 <label
                   htmlFor={`${inputId}-limit`}
                   className="block text-[10px] font-semibold uppercase tracking-wide text-inkly-muted"
                 >
-                  Result limit
+                  {t("header.resultLimit")}
                 </label>
                 <input
                   id={`${inputId}-limit`}
@@ -243,13 +244,13 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                   htmlFor={`${inputId}-tags`}
                   className="mt-2.5 block text-[10px] font-semibold uppercase tracking-wide text-inkly-muted"
                 >
-                  Tags (all required)
+                  {t("header.tagsAllRequired")}
                 </label>
                 <input
                   id={`${inputId}-tags`}
                   type="text"
                   autoComplete="off"
-                  placeholder="e.g. rust, notes"
+                  placeholder={t("header.tagsPlaceholder")}
                   className="mt-1 w-full rounded border border-inkly-border bg-white px-1.5 py-1 text-xs text-inkly-ink outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent/25"
                   value={search.tagsFilter ?? ""}
                   onChange={(e) => search.onTagsFilterChange?.(e.target.value)}
@@ -268,7 +269,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                       onChange={(e) => search.onLimitToFolderChange?.(e.target.checked)}
                     />
                     <span className="min-w-0 leading-snug">
-                      Limit to{" "}
+                      {t("header.limitTo")}{" "}
                       <span className="font-mono text-[10px] text-inkly-muted" title={search.catalogPath}>
                         {search.catalogPath}
                       </span>
@@ -276,7 +277,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                   </label>
                 ) : (
                   <p className="mt-2.5 text-[10px] leading-snug text-inkly-faint">
-                    Open a folder to scope search by path.
+                    {t("header.openFolderHint")}
                   </p>
                 )}
                 <button
@@ -287,7 +288,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                     resetSearchSettings();
                   }}
                 >
-                  Clear settings
+                  {t("header.clearSettings")}
                 </button>
               </div>
             ) : null}

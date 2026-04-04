@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 
 import type { NewDocumentFormState } from "../hooks/useNewDocumentForm";
+import { useI18n } from "../i18n/context";
 import { TiptapEditor } from "./TiptapEditor";
 
 type IndexDocumentFormProps = {
@@ -68,6 +69,7 @@ function TagsInput({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -131,7 +133,7 @@ function TagsInput({
         onBlur={() => {
           if (draft.trim()) commit(draft);
         }}
-        placeholder={tags.length === 0 ? "Type and press Enter" : ""}
+        placeholder={tags.length === 0 ? t("form.tagsPlaceholder") : ""}
       />
     </div>
   );
@@ -144,6 +146,7 @@ function UploadArea({
   form: NewDocumentFormState;
   fileInputId: string;
 }) {
+  const { t } = useI18n();
   const { contentFile, setContentFile, contentFileInputRef, clearFileInput, isHtmlFileSelected, convertHtmlFile, converting } =
     form;
 
@@ -194,7 +197,7 @@ function UploadArea({
               className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-inkly-muted transition hover:bg-inkly-border-soft hover:text-inkly-ink"
               onClick={clearFileInput}
             >
-              Remove
+              {t("form.removeFile")}
             </button>
           </div>
           {isHtmlFileSelected && (
@@ -210,7 +213,7 @@ function UploadArea({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Converting…
+                  {t("form.converting")}
                 </>
               ) : (
                 <>
@@ -221,7 +224,7 @@ function UploadArea({
                     <line x1="15" y1="15" x2="21" y2="21" />
                     <line x1="4" y1="4" x2="9" y2="9" />
                   </svg>
-                  Convert to Markdown
+                  {t("form.convertToMarkdown")}
                 </>
               )}
             </button>
@@ -234,12 +237,8 @@ function UploadArea({
         >
           <UploadIcon />
           <div className="text-center">
-            <p className="text-sm font-medium text-inkly-ink-soft">
-              Click to upload a file
-            </p>
-            <p className="mt-0.5 text-[11px] text-inkly-faint">
-              .txt, .md, .html supported
-            </p>
+            <p className="text-sm font-medium text-inkly-ink-soft">{t("form.uploadClick")}</p>
+            <p className="mt-0.5 text-[11px] text-inkly-faint">{t("form.uploadTypes")}</p>
           </div>
         </label>
       )}
@@ -247,7 +246,7 @@ function UploadArea({
       <div className="flex items-center justify-center gap-3 py-1">
         <div className="h-px flex-1 bg-inkly-line/50" />
         <span className="text-[10px] font-medium uppercase tracking-wider text-inkly-faint">
-          or
+          {t("form.or")}
         </span>
         <div className="h-px flex-1 bg-inkly-line/50" />
       </div>
@@ -258,24 +257,25 @@ function UploadArea({
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-inkly-border/80 bg-white px-4 py-2.5 text-sm font-medium text-inkly-ink-soft shadow-sm transition hover:border-inkly-accent/40 hover:text-inkly-ink"
       >
         <PenIcon />
-        Write content
+        {t("form.writeContent")}
       </button>
     </div>
   );
 }
 
 function EditorArea({ form }: { form: NewDocumentFormState }) {
+  const { t } = useI18n();
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={`${labelCls} mb-0`}>Body</span>
+          <span className={`${labelCls} mb-0`}>{t("form.body")}</span>
           {form.convertedFromHtml && (
             <span className="inline-flex items-center gap-1 rounded-full bg-inkly-accent/10 px-2 py-0.5 text-[10px] font-medium text-inkly-accent">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-              Converted from HTML
+              {t("form.convertedFromHtml")}
             </span>
           )}
         </div>
@@ -284,14 +284,14 @@ function EditorArea({ form }: { form: NewDocumentFormState }) {
           onClick={form.switchToUpload}
           className="rounded-md border border-inkly-border/80 bg-white px-2 py-0.5 text-[10px] font-medium text-inkly-ink-soft shadow-sm transition hover:border-inkly-accent/40 hover:text-inkly-ink"
         >
-          Upload file instead
+          {t("form.uploadFileInstead")}
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         <TiptapEditor
           initialContent={form.content}
           onChange={form.setContent}
-          placeholder="Start writing… supports Markdown formatting"
+          placeholder={t("form.editorPlaceholder")}
         />
       </div>
     </div>
@@ -299,6 +299,7 @@ function EditorArea({ form }: { form: NewDocumentFormState }) {
 }
 
 export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
+  const { t } = useI18n();
   const fileInputId = useId();
   const {
     title,
@@ -338,7 +339,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         <>
           <div>
             <label htmlFor="idx-title" className={labelCls}>
-              Title <span className="text-red-400">*</span>
+              {t("form.title")} <span className="text-red-400">*</span>
             </label>
             <input
               id="idx-title"
@@ -347,7 +348,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
               className={inputCls}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Page title"
+              placeholder={t("form.pageTitlePlaceholder")}
             />
           </div>
 
@@ -369,26 +370,26 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 <polyline points="9 18 15 12 9 6" />
               </svg>
               <span className="font-inkly-read-ui text-[10px] font-medium tracking-wide">
-                Folder, tags, URL, note…
+                {t("form.moreMetadata")}
               </span>
             </summary>
             <div className="space-y-3 border-t border-inkly-line/40 px-3 pb-3 pt-2">
               <div>
                 <label htmlFor="idx-path" className={labelCls}>
-                  Folder path
+                  {t("form.path")}
                 </label>
                 <input
                   id="idx-path"
                   className={`${inputCls} font-mono text-[12px]`}
                   value={path}
                   onChange={(e) => setPath(e.target.value)}
-                  placeholder="/ or /notes/"
+                  placeholder={t("form.pathPlaceholderShort")}
                 />
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label htmlFor="idx-url" className={labelCls}>
-                    Source URL
+                    {t("form.docUrl")}
                   </label>
                   <input
                     id="idx-url"
@@ -396,20 +397,20 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                     className={`${inputCls} font-mono text-[12px]`}
                     value={docUrl}
                     onChange={(e) => setDocUrl(e.target.value)}
-                    placeholder="https://…"
+                    placeholder={t("form.urlPlaceholder")}
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Tags</label>
+                  <label className={labelCls}>{t("form.tags")}</label>
                   <TagsInput value={tagsText} onChange={setTagsText} />
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Note</label>
+                <label className={labelCls}>{t("form.note")}</label>
                 <TiptapEditor
                   initialContent={note}
                   onChange={setNote}
-                  placeholder="Optional"
+                  placeholder={t("form.optionalPlaceholder")}
                   compact
                 />
               </div>
@@ -420,7 +421,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         <FormSection>
           <div>
             <label htmlFor="idx-title" className={labelCls}>
-              Title <span className="text-red-400">*</span>
+              {t("form.title")} <span className="text-red-400">*</span>
             </label>
             <input
               id="idx-title"
@@ -429,25 +430,25 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
               className={inputCls}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Page title"
+              placeholder={t("form.pageTitlePlaceholder")}
             />
           </div>
           <div>
             <label htmlFor="idx-path" className={labelCls}>
-              Folder path
+              {t("form.path")}
             </label>
             <input
               id="idx-path"
               className={`${inputCls} font-mono text-[12px]`}
               value={path}
               onChange={(e) => setPath(e.target.value)}
-              placeholder="/ or /notes/"
+              placeholder={t("form.pathPlaceholderShort")}
             />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label htmlFor="idx-url" className={labelCls}>
-                Source URL
+                {t("form.docUrl")}
               </label>
               <input
                 id="idx-url"
@@ -455,20 +456,20 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 className={`${inputCls} font-mono text-[12px]`}
                 value={docUrl}
                 onChange={(e) => setDocUrl(e.target.value)}
-                placeholder="https://…"
+                placeholder={t("form.urlPlaceholder")}
               />
             </div>
             <div>
-              <label className={labelCls}>Tags</label>
+              <label className={labelCls}>{t("form.tags")}</label>
               <TagsInput value={tagsText} onChange={setTagsText} />
             </div>
           </div>
           <div>
-            <label className={labelCls}>Note</label>
+            <label className={labelCls}>{t("form.note")}</label>
             <TiptapEditor
               initialContent={note}
               onChange={setNote}
-              placeholder="Optional"
+              placeholder={t("form.optionalPlaceholder")}
               compact
             />
           </div>
@@ -478,7 +479,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           <FormSection>
             <div>
               <label htmlFor="idx-title" className={labelCls}>
-                Title <span className="text-red-400">*</span>
+                {t("form.title")} <span className="text-red-400">*</span>
               </label>
               <input
                 id="idx-title"
@@ -487,7 +488,7 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 className={inputCls}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Page title"
+                placeholder={t("form.pageTitlePlaceholder")}
               />
             </div>
             <UploadArea form={form} fileInputId={fileInputId} />
@@ -496,24 +497,24 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
           <FormSection>
             <div>
               <label htmlFor="idx-path" className={labelCls}>
-                Folder path
+                {t("form.path")}
               </label>
               <input
                 id="idx-path"
                 className={`${inputCls} font-mono text-[12px]`}
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                placeholder="/ or /notes/"
+                placeholder={t("form.pathPlaceholderShort")}
               />
               <p className="mt-0.5 text-[10px] leading-tight text-inkly-faint">
-                <span className="font-mono text-inkly-muted">/</span> or{" "}
+                <span className="font-mono text-inkly-muted">/</span> {t("form.pathHintOr")}{" "}
                 <span className="font-mono text-inkly-muted">/a/b/</span>
               </p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label htmlFor="idx-url" className={labelCls}>
-                  Source URL
+                  {t("form.docUrl")}
                 </label>
                 <input
                   id="idx-url"
@@ -521,20 +522,20 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                   className={`${inputCls} font-mono text-[12px]`}
                   value={docUrl}
                   onChange={(e) => setDocUrl(e.target.value)}
-                  placeholder="https://…"
+                  placeholder={t("form.urlPlaceholder")}
                 />
               </div>
               <div>
-                <label className={labelCls}>Tags</label>
+                <label className={labelCls}>{t("form.tags")}</label>
                 <TagsInput value={tagsText} onChange={setTagsText} />
               </div>
             </div>
             <div>
-              <label className={labelCls}>Note</label>
+              <label className={labelCls}>{t("form.note")}</label>
               <TiptapEditor
                 initialContent={note}
                 onChange={setNote}
-                placeholder="Optional"
+                placeholder={t("form.optionalPlaceholder")}
                 compact
               />
             </div>
@@ -550,11 +551,11 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         >
           {loading
             ? isEditing
-              ? "Saving…"
-              : "Indexing…"
+              ? t("form.saving")
+              : t("form.indexing")
             : isEditing
-              ? "Save changes"
-              : "Index document"}
+              ? t("form.saveChanges")
+              : t("form.indexDocument")}
         </button>
       </div>
     </form>

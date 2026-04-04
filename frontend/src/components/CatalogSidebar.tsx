@@ -1,10 +1,14 @@
 import { Link, useParams } from "react-router-dom";
 
+import { useI18n } from "../i18n/context";
 import { docLink } from "../lib/docLink";
 import type { CatalogResponse } from "../types";
 
-function pathBreadcrumbs(normalizedPath: string): { label: string; path: string }[] {
-  const out: { label: string; path: string }[] = [{ label: "Home", path: "/" }];
+function pathBreadcrumbs(
+  normalizedPath: string,
+  homeLabel: string,
+): { label: string; path: string }[] {
+  const out: { label: string; path: string }[] = [{ label: homeLabel, path: "/" }];
   if (normalizedPath === "/") {
     return out;
   }
@@ -34,6 +38,7 @@ export function CatalogSidebar({
   onPathChange,
   onNewDocument,
 }: CatalogSidebarProps) {
+  const { t } = useI18n();
   const params = useParams();
   const activeDocParam = params.docId;
   const activeDocId =
@@ -47,18 +52,21 @@ export function CatalogSidebar({
         aria-busy={catalogLoading}
       >
         <h2 className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-muted">
-          Library
+          {t("catalog.library")}
         </h2>
         {catalogLoading ? (
-          <span className="h-1.5 w-10 shrink-0 animate-pulse rounded-sm bg-inkly-line/50" title="Loading" />
+          <span
+            className="h-1.5 w-10 shrink-0 animate-pulse rounded-sm bg-inkly-line/50"
+            title={t("catalog.loadingTitle")}
+          />
         ) : null}
         {onNewDocument ? (
           <button
             type="button"
             onClick={onNewDocument}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-inkly-muted transition-colors hover:bg-white/50 hover:text-inkly-accent"
-            aria-label="Add new page"
-            title="New page"
+            aria-label={t("catalog.addPageAria")}
+            title={t("catalog.addPageTitle")}
           >
             <svg
               width="11"
@@ -84,9 +92,9 @@ export function CatalogSidebar({
 
       {catalog ? (
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
-          <nav className="text-[11px] leading-snug text-inkly-muted" aria-label="Folder path">
+          <nav className="text-[11px] leading-snug text-inkly-muted" aria-label={t("catalog.folderNavAria")}>
             <div className="flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
-              {pathBreadcrumbs(catalog.path).map((crumb, i, arr) => (
+              {pathBreadcrumbs(catalog.path, t("catalog.home")).map((crumb, i, arr) => (
                 <span key={crumb.path} className="flex items-center gap-0.5">
                   {i > 0 ? (
                     <span className="text-inkly-faint/70" aria-hidden>
@@ -110,7 +118,7 @@ export function CatalogSidebar({
           </nav>
 
           <p className="mb-0.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-faint">
-            Folders
+            {t("catalog.folders")}
           </p>
           <ul className="space-y-0.5">
             {catalog.subdirs.length === 0 ? (
@@ -132,11 +140,11 @@ export function CatalogSidebar({
           </ul>
 
           <p className="mb-0.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-faint">
-            Pages
+            {t("catalog.pages")}
           </p>
           <ul className="space-y-0.5">
             {catalog.files.length === 0 ? (
-              <li className="py-1 text-[11px] text-inkly-faint">None</li>
+              <li className="py-1 text-[11px] text-inkly-faint">{t("catalog.none")}</li>
             ) : (
               catalog.files.map((f) => {
                 const active = hasActiveDoc && f.doc_id === activeDocId;
@@ -160,7 +168,7 @@ export function CatalogSidebar({
           </ul>
         </div>
       ) : !catalogLoading && !catalogErr ? (
-        <p className="mt-2 text-[11px] text-inkly-faint">No catalog data.</p>
+        <p className="mt-2 text-[11px] text-inkly-faint">{t("catalog.empty")}</p>
       ) : null}
     </div>
   );

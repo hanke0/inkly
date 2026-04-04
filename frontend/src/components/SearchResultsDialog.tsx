@@ -2,6 +2,7 @@ import { useId, useRef } from "react";
 import { Link } from "react-router-dom";
 
 import { useModalBehavior } from "../hooks/useModalBehavior";
+import { useI18n } from "../i18n/context";
 import { docLink } from "../lib/docLink";
 import type { SearchResponse } from "../types";
 
@@ -19,6 +20,7 @@ export function SearchResultsDialog({
   response,
   queryHint,
 }: SearchResultsDialogProps) {
+  const { t, tf } = useI18n();
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   useModalBehavior(open, onClose, closeRef);
@@ -43,21 +45,23 @@ export function SearchResultsDialog({
         <div className="flex items-start justify-between gap-3 border-b border-inkly-border px-4 py-3 sm:px-5">
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-semibold text-inkly-ink">
-              Search results
+              {t("search.resultsTitle")}
             </h2>
             {queryHint ? (
               <p className="mt-1 truncate text-sm text-inkly-muted" title={queryHint}>
                 "{queryHint}"
               </p>
             ) : null}
-            <p className="mt-1 text-xs text-inkly-faint">{response.total_hits} hits</p>
+            <p className="mt-1 text-xs text-inkly-faint">
+              {tf("search.hits", { n: response.total_hits })}
+            </p>
           </div>
           <button
             ref={closeRef}
             type="button"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-inkly-muted transition-colors hover:bg-inkly-border-soft hover:text-inkly-ink"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("search.close")}
           >
             <svg
               width="18"
@@ -78,7 +82,7 @@ export function SearchResultsDialog({
         <ul className="max-h-[36rem] space-y-2 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
           {response.results.length === 0 ? (
             <li className="rounded-lg border border-inkly-border bg-inkly-paper-warm px-3 py-6 text-center text-sm text-inkly-muted">
-              No matches.
+              {t("search.noMatches")}
             </li>
           ) : (
             response.results.map((r) => (

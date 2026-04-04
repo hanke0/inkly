@@ -53,6 +53,8 @@ export type SearchResponse = {
 
 export type SessionResponse = {
   ok: boolean;
+  /** Resolved server-side from `Accept-Language`. */
+  locale: string;
 };
 
 export type CatalogSubdir = {

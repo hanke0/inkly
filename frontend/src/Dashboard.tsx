@@ -7,8 +7,10 @@ import { SidebarLayout } from "./components/SidebarLayout";
 import { useCatalog } from "./hooks/useCatalog";
 import { useNewDocumentForm } from "./hooks/useNewDocumentForm";
 import { useSearch } from "./hooks/useSearch";
+import { useI18n } from "./i18n/context";
 
 export default function Dashboard() {
+  const { t, tf } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogUrlPath = searchParams.get("path")?.trim() || "/";
 
@@ -22,12 +24,12 @@ export default function Dashboard() {
     void reloadCatalog();
     setIndexModalOpen(false);
     if (ctx.updatedDocId != null) {
-      setActionStatus(`Updated document #${ctx.updatedDocId}.`);
+      setActionStatus(tf("dash.updatedDoc", { id: ctx.updatedDocId }));
     } else {
       setActionStatus(
         typeof res.doc_id === "number"
-          ? `Indexed successfully (doc #${res.doc_id}).`
-          : "Indexed successfully.",
+          ? tf("dash.indexedWithId", { id: res.doc_id })
+          : t("dash.indexed"),
       );
     }
   });
@@ -69,9 +71,7 @@ export default function Dashboard() {
       >
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 md:px-8 md:py-6">
           {!searchState.error ? (
-            <p className="text-sm leading-relaxed text-inkly-muted">
-              Pick a page in the library or search above.
-            </p>
+            <p className="text-sm leading-relaxed text-inkly-muted">{t("dash.pickPage")}</p>
           ) : null}
         </div>
       </SidebarLayout>

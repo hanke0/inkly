@@ -2,6 +2,8 @@ mod auth;
 mod cli;
 mod config;
 mod error;
+mod i18n;
+mod locale;
 mod routes;
 mod state;
 mod static_assets;
@@ -17,6 +19,8 @@ use routes::{
     index_documents_bulk, search, session,
 };
 use state::AppState;
+use axum::middleware;
+use crate::locale::locale_middleware;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -153,6 +157,7 @@ async fn run_server() {
         .route("/v1/catalog", get(catalog).layer(auth_layer.clone()))
         .route("/v1/search", get(search).layer(auth_layer.clone()))
         .route("/v1/session", get(session).layer(auth_layer))
+        .layer(middleware::from_fn(locale_middleware))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(RequestBodyLimitLayer::new(config.max_body_bytes))

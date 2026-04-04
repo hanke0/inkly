@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::result::Result;
 
 use crate::auth::AuthUser;
-use crate::error::{user_message_for_search_query_error, ApiError};
+use crate::error::{map_index_error, map_search_error, ApiError, BULK_CONTENT_EMPTY_MARKER};
+use crate::i18n::{t, Msg};
+use crate::locale::Locale;
 use crate::state::AppState;
 
 use inkly_contract::dto::{
@@ -27,29 +29,36 @@ pub async fn healthz() -> impl IntoResponse {
 }
 
 /// Validates `Authorization: Basic` and returns 200 when credentials match the server config.
-pub async fn session(Extension(user): Extension<AuthUser>) -> Result<Json<SessionResponse>, ApiError> {
+pub async fn session(
+    Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
+) -> Result<Json<SessionResponse>, ApiError> {
     info!(
         user_id = %user.user_id,
         tenant_id = %user.tenant_id,
         "session"
     );
-    Ok(Json(SessionResponse { ok: true }))
+    Ok(Json(SessionResponse {
+        ok: true,
+        locale: locale.as_api_tag().to_string(),
+    }))
 }
 
 // ---------------------------------------------------------------------------
 // Input validation helpers
 // ---------------------------------------------------------------------------
 
-/// Normalizes a logical directory path: `/` or `/segment/.../` (trailing slash except root).
-fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
+/// Normalizes a logical directory path to `/` or `/segment/.../`.
+///
+/// Guarantees: leading `/`; non-root paths end with `/`; empty and `.` segments removed; `..` rejected.
+/// Callers should use this as the only path canonicalization before persisting or comparing paths.
+fn normalize_dir_path(raw: &str, locale: Locale) -> Result<String, ApiError> {
     let s = raw.trim();
     if s.is_empty() {
         return Ok("/".to_string());
     }
     if !s.starts_with('/') {
-        return Err(ApiError::bad_request(
-            "Path must start with `/` (for example `/notes/`). Fix the path and try again.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::InvalidFolderPath)));
     }
     let parts: Vec<&str> = s
         .split('/')
@@ -57,9 +66,7 @@ fn normalize_dir_path(raw: &str) -> Result<String, ApiError> {
         .collect();
     for p in &parts {
         if *p == ".." {
-            return Err(ApiError::bad_request(
-                "Path cannot contain `..` segments. Use a folder path under your workspace.",
-            ));
+            return Err(ApiError::bad_request(t(locale, Msg::InvalidFolderPath)));
         }
     }
     if parts.is_empty() {
@@ -72,61 +79,27 @@ fn use_automatic_doc_id(doc_id: Option<u64>) -> bool {
     matches!(doc_id, None | Some(0))
 }
 
-/// Logical path after `normalize_dir_path`: `/` or `/segment/.../` (no `.` / `..` segments).
-fn validate_document_path(path: &str) -> Result<(), ApiError> {
-    if path.is_empty() || !path.starts_with('/') {
-        return Err(ApiError::bad_request(
-            "Path must start with `/` (for example `/notes/`). Fix the path and try again.",
-        ));
-    }
-    if path == "/" {
-        return Ok(());
-    }
-    if !path.ends_with('/') {
-        return Err(ApiError::bad_request(
-            "Document path must end with `/` because it names a folder (for example `/notes/`).",
-        ));
-    }
-    for seg in path.split('/').filter(|s| !s.is_empty()) {
-        if seg == "." || seg == ".." {
-            return Err(ApiError::bad_request(
-                "Path cannot contain `.` or `..` segments. Use a normal folder name.",
-            ));
-        }
-    }
-    Ok(())
-}
-
 /// Single tag: non-empty after trim; only Unicode letters, numbers, and `_`.
-fn validate_tag_format(tag: &str) -> Result<(), ApiError> {
-    let t = tag.trim();
-    if t.is_empty() {
-        return Err(ApiError::bad_request(
-            "Each tag must be non-empty after trimming spaces.",
-        ));
+fn validate_tag_format(tag: &str, locale: Locale) -> Result<(), ApiError> {
+    let trimmed = tag.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(t(locale, Msg::TagNonempty)));
     }
-    if t.chars().any(|c| c.is_control()) {
-        return Err(ApiError::bad_request(
-            "Tags cannot contain control characters. Use letters, numbers, and underscores.",
-        ));
+    if trimmed.chars().any(|c| c.is_control()) {
+        return Err(ApiError::bad_request(t(locale, Msg::TagNoControl)));
     }
-    if !t.chars().all(|c| c == '_' || c.is_alphanumeric()) {
-        return Err(ApiError::bad_request(
-            "Tags may only contain letters, numbers, and underscores.",
-        ));
+    if !trimmed.chars().all(|c| c == '_' || c.is_alphanumeric()) {
+        return Err(ApiError::bad_request(t(locale, Msg::TagAlphanumeric)));
     }
     Ok(())
 }
 
-fn validate_document(input: &DocumentIn) -> Result<(), ApiError> {
+fn validate_document(input: &DocumentIn, locale: Locale) -> Result<(), ApiError> {
     if input.title.trim().is_empty() {
-        return Err(ApiError::bad_request(
-            "Title is required. Enter a non-empty title and try again.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::TitleRequired)));
     }
-    validate_document_path(&input.path)?;
     for t in &input.tags {
-        validate_tag_format(t)?;
+        validate_tag_format(t, locale)?;
     }
     Ok(())
 }
@@ -170,12 +143,14 @@ fn into_document_detail(d: StoredDocument) -> DocumentDetailResponse {
 // Multipart helpers
 // ---------------------------------------------------------------------------
 
-async fn multipart_text(field: axum::extract::multipart::Field<'_>, name: &str) -> Result<String, ApiError> {
+async fn multipart_text(
+    field: axum::extract::multipart::Field<'_>,
+    name: &str,
+    locale: Locale,
+) -> Result<String, ApiError> {
     field.text().await.map_err(|e| {
         warn!(error = %e, name, "multipart text read failed");
-        ApiError::bad_request(
-            "Could not read the multipart form. Retry the upload and ensure the request is multipart/form-data.",
-        )
+        ApiError::bad_request(t(locale, Msg::MultipartReadFailed))
     })
 }
 
@@ -226,6 +201,7 @@ async fn perform_index_document(
     user: AuthUser,
     input: DocumentIn,
     op: &'static str,
+    locale: Locale,
 ) -> Result<Json<IndexResponse>, ApiError> {
     let tenant_id = user.tenant_id;
     let want_auto_id = use_automatic_doc_id(input.doc_id);
@@ -245,14 +221,10 @@ async fn perform_index_document(
 
     let (content, existing_summary) = if want_auto_id {
         let c = input.content.ok_or_else(|| {
-            ApiError::bad_request(
-                "New documents require body content. Paste or type content in the editor, then save.",
-            )
+            ApiError::bad_request(t(locale, Msg::NewDocNeedsContent))
         })?;
         if c.trim().is_empty() {
-            return Err(ApiError::bad_request(
-                "Content cannot be empty. Add text or HTML before saving.",
-            ));
+            return Err(ApiError::bad_request(t(locale, Msg::BulkContentEmpty)));
         }
         (c, None)
     } else {
@@ -261,8 +233,9 @@ async fn perform_index_document(
         let tid = tenant_id.clone();
         let existing = tokio::task::spawn_blocking(move || idx.get_document(&tid, existing_doc_id))
             .await
-            .map_err(|_| ApiError::Internal)??
-            .ok_or(ApiError::NotFound)?;
+            .map_err(|_| ApiError::internal(locale))?
+            .map_err(|e| map_index_error(e, locale))?
+            .ok_or_else(|| ApiError::not_found(locale))?;
         (existing.content, Some(existing.summary))
     };
 
@@ -297,7 +270,8 @@ async fn perform_index_document(
         Ok::<_, SearchError>((stats, assigned))
     })
     .await
-    .map_err(|_| ApiError::Internal)??;
+    .map_err(|_| ApiError::internal(locale))?
+    .map_err(|e| map_index_error(e, locale))?;
 
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
@@ -314,11 +288,12 @@ async fn perform_index_document(
 pub async fn index_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     Json(mut input): Json<DocumentIn>,
 ) -> Result<Json<IndexResponse>, ApiError> {
-    input.path = normalize_dir_path(&input.path)?;
-    validate_document(&input)?;
-    perform_index_document(state, user, input, "index_document").await
+    input.path = normalize_dir_path(&input.path, locale)?;
+    validate_document(&input, locale)?;
+    perform_index_document(state, user, input, "index_document", locale).await
 }
 
 /// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`).
@@ -328,6 +303,7 @@ pub async fn index_document(
 pub async fn index_document_upload(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     mut multipart: Multipart,
 ) -> Result<Json<IndexResponse>, ApiError> {
     let mut file_bytes: Option<Vec<u8>> = None;
@@ -340,39 +316,31 @@ pub async fn index_document_upload(
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         warn!(error = %e, "multipart field read failed");
-        ApiError::bad_request(
-            "Could not read the multipart form. Retry the upload and ensure the request is multipart/form-data.",
-        )
+        ApiError::bad_request(t(locale, Msg::MultipartReadFailed))
     })? {
         let name = field.name().unwrap_or("").to_string();
         match name.as_str() {
             "file" => {
                 if file_bytes.is_some() {
-                    return Err(ApiError::bad_request(
-                        "The form contains more than one `file` field. Send a single file part.",
-                    ));
+                    return Err(ApiError::bad_request(t(locale, Msg::MultipartMultipleFile)));
                 }
                 let bytes = field.bytes().await.map_err(|e| {
                     warn!(error = %e, "multipart file bytes read failed");
-                    ApiError::bad_request(
-                        "Could not read the multipart form. Retry the upload and ensure the request is multipart/form-data.",
-                    )
+                    ApiError::bad_request(t(locale, Msg::MultipartReadFailed))
                 })?;
                 file_bytes = Some(bytes.to_vec());
             }
             "doc_id" => {
                 if doc_id_raw.is_some() {
-                    return Err(ApiError::bad_request(
-                        "The form contains more than one `doc_id` field. Send a single doc_id value.",
-                    ));
+                    return Err(ApiError::bad_request(t(locale, Msg::MultipartMultipleDocId)));
                 }
-                doc_id_raw = Some(multipart_text(field, "doc_id").await?);
+                doc_id_raw = Some(multipart_text(field, "doc_id", locale).await?);
             }
-            "title" => title = multipart_text(field, "title").await?,
-            "doc_url" => doc_url = multipart_text(field, "doc_url").await?,
-            "path" => path = multipart_text(field, "path").await?,
-            "note" => note = multipart_text(field, "note").await?,
-            "tags" => tags_raw = multipart_text(field, "tags").await?,
+            "title" => title = multipart_text(field, "title", locale).await?,
+            "doc_url" => doc_url = multipart_text(field, "doc_url", locale).await?,
+            "path" => path = multipart_text(field, "path", locale).await?,
+            "note" => note = multipart_text(field, "note", locale).await?,
+            "tags" => tags_raw = multipart_text(field, "tags", locale).await?,
             _ => {}
         }
     }
@@ -382,25 +350,17 @@ pub async fn index_document_upload(
         Some(s) => {
             let n = s
                 .parse::<u64>()
-                .map_err(|_| {
-                    ApiError::bad_request(
-                        "`doc_id` must be a non-negative whole number (or omit / use 0 for a new document).",
-                    )
-                })?;
+                .map_err(|_| ApiError::bad_request(t(locale, Msg::DocIdMustBeNumber)))?;
             Some(n)
         }
     };
 
     let content = if use_automatic_doc_id(doc_id) {
         let bytes = file_bytes.ok_or_else(|| {
-            ApiError::bad_request(
-                "New documents need a `file` part in the multipart body. Add the file field and try again.",
-            )
+            ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart))
         })?;
         Some(String::from_utf8(bytes).map_err(|_| {
-            ApiError::bad_request(
-                "The uploaded file must be valid UTF-8 text or HTML. Convert the encoding and try again.",
-            )
+            ApiError::bad_request(t(locale, Msg::UploadedFileUtf8))
         })?)
     } else {
         None
@@ -422,26 +382,25 @@ pub async fn index_document_upload(
         note,
     };
 
-    input.path = normalize_dir_path(&input.path)?;
-    validate_document(&input)?;
+    input.path = normalize_dir_path(&input.path, locale)?;
+    validate_document(&input, locale)?;
 
-    perform_index_document(state, user, input, "index_document_upload").await
+    perform_index_document(state, user, input, "index_document_upload", locale).await
 }
 
 pub async fn index_documents_bulk(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     Json(mut input): Json<BulkIndexIn>,
 ) -> Result<Json<IndexResponse>, ApiError> {
     const MAX_BATCH: usize = 200;
     if input.documents.is_empty() || input.documents.len() > MAX_BATCH {
-        return Err(ApiError::bad_request(
-            "Bulk index expects between 1 and 200 documents in one request. Reduce or split the batch and try again.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::BulkBatchSize)));
     }
     for doc in &mut input.documents {
-        doc.path = normalize_dir_path(&doc.path)?;
-        validate_document(doc)?;
+        doc.path = normalize_dir_path(&doc.path, locale)?;
+        validate_document(doc, locale)?;
     }
 
     let tenant_id = user.tenant_id;
@@ -470,7 +429,7 @@ pub async fn index_documents_bulk(
                 let c = d.content.unwrap_or_default();
                 if c.trim().is_empty() {
                     return Err(SearchError::InvalidInput(
-                        "content must not be empty".into(),
+                        BULK_CONTENT_EMPTY_MARKER.into(),
                     ));
                 }
                 (c, None)
@@ -499,7 +458,8 @@ pub async fn index_documents_bulk(
         Ok::<_, SearchError>((stats, ids))
     })
     .await
-    .map_err(|_| ApiError::Internal)??;
+    .map_err(|_| ApiError::internal(locale))?
+    .map_err(|e| map_index_error(e, locale))?;
 
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
@@ -514,6 +474,7 @@ const MAX_SEARCH_TAG_FILTERS: usize = 20;
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     let tenant_id = user.tenant_id;
@@ -523,7 +484,7 @@ pub async fn search(
 
     let path_filter = match query.path.as_deref() {
         None | Some("") => None,
-        Some(p) => Some(normalize_dir_path(p)?),
+        Some(p) => Some(normalize_dir_path(p, locale)?),
     };
     let path_filter = path_filter.filter(|p| p != "/");
 
@@ -539,19 +500,15 @@ pub async fn search(
         .unwrap_or_default();
 
     if tag_filters.len() > MAX_SEARCH_TAG_FILTERS {
-        return Err(ApiError::bad_request(
-            "Too many tag filters in this search. Remove some tag filters (comma-separated) and try again.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::SearchTooManyTags)));
     }
     for t in &tag_filters {
-        validate_tag_format(t)?;
+        validate_tag_format(t, locale)?;
     }
 
     let q_trimmed = q.trim().to_string();
     if q_trimmed.is_empty() && path_filter.is_none() && tag_filters.is_empty() {
-        return Err(ApiError::bad_request(
-            "Enter search text and/or pick a folder path or tag filter. At least one of these is required.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::SearchNeedsCriteria)));
     }
 
     info!(
@@ -574,13 +531,8 @@ pub async fn search(
         )
     })
     .await
-    .map_err(|_| ApiError::Internal)?
-    .map_err(|e| match e {
-        SearchError::InvalidInput(msg) => {
-            ApiError::bad_request(user_message_for_search_query_error(&msg))
-        }
-        _ => ApiError::Internal,
-    })?;
+    .map_err(|_| ApiError::internal(locale))?
+    .map_err(|e| map_search_error(e, locale))?;
 
     Ok(Json(SearchResponse {
         total_hits,
@@ -591,9 +543,10 @@ pub async fn search(
 pub async fn catalog(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     Query(query): Query<CatalogQuery>,
 ) -> Result<Json<CatalogResponse>, ApiError> {
-    let dir_path = normalize_dir_path(&query.path)?;
+    let dir_path = normalize_dir_path(&query.path, locale)?;
     let tenant_id = user.tenant_id;
     let index = state.index.clone();
 
@@ -606,7 +559,8 @@ pub async fn catalog(
 
     let listing = tokio::task::spawn_blocking(move || index.catalog_list(&tenant_id, &dir_path))
         .await
-        .map_err(|_| ApiError::Internal)??;
+        .map_err(|_| ApiError::internal(locale))?
+        .map_err(|e| map_index_error(e, locale))?;
 
     Ok(Json(CatalogResponse {
         path: listing.path,
@@ -626,12 +580,11 @@ pub async fn catalog(
 pub async fn get_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     Path(doc_id): Path<u64>,
 ) -> Result<Json<DocumentDetailResponse>, ApiError> {
     if doc_id == 0 {
-        return Err(ApiError::bad_request(
-            "Document ID must be a positive number. Use the ID shown in search or the catalog.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
     }
 
     let tenant_id = user.tenant_id;
@@ -646,21 +599,21 @@ pub async fn get_document(
 
     let doc = tokio::task::spawn_blocking(move || index.get_document(&tenant_id, doc_id))
         .await
-        .map_err(|_| ApiError::Internal)??;
+        .map_err(|_| ApiError::internal(locale))?
+        .map_err(|e| map_index_error(e, locale))?;
 
-    let d = doc.ok_or(ApiError::NotFound)?;
+    let d = doc.ok_or_else(|| ApiError::not_found(locale))?;
     Ok(Json(into_document_detail(d)))
 }
 
 pub async fn delete_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
     Path(doc_id): Path<u64>,
 ) -> Result<StatusCode, ApiError> {
     if doc_id == 0 {
-        return Err(ApiError::bad_request(
-            "Document ID must be a positive number. Use the ID shown in search or the catalog.",
-        ));
+        return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
     }
 
     let tenant_id = user.tenant_id;
@@ -675,11 +628,11 @@ pub async fn delete_document(
 
     let removed = tokio::task::spawn_blocking(move || index.delete_document(&tenant_id, doc_id))
         .await
-        .map_err(|_| ApiError::Internal)?
-        .map_err(ApiError::from)?;
+        .map_err(|_| ApiError::internal(locale))?
+        .map_err(|e| map_index_error(e, locale))?;
 
     if !removed {
-        return Err(ApiError::NotFound);
+        return Err(ApiError::not_found(locale));
     }
 
     Ok(StatusCode::NO_CONTENT)
