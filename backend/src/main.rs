@@ -51,11 +51,19 @@ fn build_cors_layer(config: &config::Config) -> Result<CorsLayer, String> {
 
 fn main() {
     let cli = Cli::parse();
+    dotenvy::from_filename(".env").expect("failed to parse .env file");
+    tracing_subscriber::fmt()
+        .with_writer(|| std::io::stderr())
+        .init();
+
     match cli.command.unwrap_or(Commands::Serve) {
         Commands::Serve => {
             tokio::runtime::Runtime::new()
                 .expect("tokio runtime")
                 .block_on(run_server());
+        }
+        Commands::Models => {
+            cli::run_list_models();
         }
         Commands::SummaryBench {
             file,
@@ -65,8 +73,7 @@ fn main() {
             cpu,
             hf_cache,
         } => {
-            dotenvy::dotenv().ok();
-            tracing_subscriber::fmt().init();
+
             if let Err(e) = cli::run_summary_bench(file, model, max_article_chars, runs, cpu, hf_cache) {
                 eprintln!("summary-bench: {e}");
                 std::process::exit(1);
@@ -76,9 +83,6 @@ fn main() {
 }
 
 async fn run_server() {
-    dotenvy::dotenv().ok();
-    tracing_subscriber::fmt().init();
-
     let config = match config::Config::from_env() {
         Ok(c) => c,
         Err(e) => {

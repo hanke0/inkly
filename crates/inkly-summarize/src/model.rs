@@ -1,11 +1,19 @@
 //! Summarizer presets: Qwen3.5, DeepSeek-R1-Distill-Qwen, Gemma 4 (Unsloth GGUF), and LFM2.5-Thinking.
+//!
+//! Chat framing matches Hugging Face `tokenizer_config.json` / `chat_template` token strings; the same
+//! literals are captured in repo `tmp/qwen3.5.json`, `tmp/deepseek-r1.json`, `tmp/gemma4.json`, and
+//! `tmp/lfm2.5.json` for reference (this crate does not read those files at runtime).
 
 use std::fmt;
 use std::str::FromStr;
 
+/// Default system instruction when callers do not supply their own (used by [`ModelFamily::format_summary_prompt`]).
+pub const SYSTEM_PROMPT: &str = "You are a summary assistant. Given an article, detect its main language. Output a short summary of the core knowledge (key facts, ideas, findings) in that same language. Keep it brief (3-5 sentences or 3-6 bullet points). Be neutral and factual. Skip fluff, opinions, examples. Output only the summary.";
+
 /// Supported GGUF presets (Unsloth Q4_K_M where noted; LFM from LiquidAI).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum ModelFamily {
+pub enum Model {
+    // qwen3.5 family
     #[default]
     Qwen35_0_8B,
     Qwen35_2B,
@@ -13,26 +21,191 @@ pub enum ModelFamily {
     Qwen35_9B,
     Qwen35_27B,
     Qwen35_35B,
-    Qwen35_122B,
-    /// Unsloth GGUF; base `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B`.
+
+    // deepseek family
     DeepSeekR1_1_5B,
-    /// Unsloth GGUF; base `deepseek-ai/DeepSeek-R1-Distill-Qwen-7B`.
     DeepSeekR1_7B,
-    /// Unsloth GGUF; base `deepseek-ai/DeepSeek-R1-Distill-Qwen-14B`.
     DeepSeekR1_14B,
-    /// Unsloth GGUF; base `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B`.
     DeepSeekR1_32B,
-    /// `unsloth/gemma-4-26B-A4B-it-GGUF` (MoE; UD-Q4_K_M).
+
+    // gemma4 family
+    #[allow(non_camel_case_types)]
+    Gemma4_2B,
+    #[allow(non_camel_case_types)]
+    Gemma4_4B,
     Gemma4_26B,
-    /// `unsloth/gemma-4-31B-it-GGUF` (Q4_K_M).
     Gemma4_31B,
-    /// `unsloth/gemma-4-E4B-it-GGUF` (Q4_K_M).
-    #[allow(non_camel_case_types)]
-    Gemma4_E4B,
-    /// `unsloth/gemma-4-E2B-it-GGUF` (Q4_K_M).
-    #[allow(non_camel_case_types)]
-    Gemma4_E2B,
+
+    // lfm2.5 family
     Lfm25_1_2B,
+}
+
+/// Chat template line shared by Hugging Face presets in the same model family (prompt framing, sampling, postprocess).
+#[derive(Clone, Copy, Debug)]
+enum Family {
+    Qwen35,
+    DeepSeekR1,
+    Gemma4,
+    Lfm25,
+}
+
+/// One row per [`ModelFamily`] variant: Hugging Face repo / GGUF file, CLI id (`Display` / [`FromStr`]), and template line.
+macro_rules! model_preset_dispatch {
+    (
+        $(
+            $variant:ident => $family:ident {
+                repo: $repo:literal,
+                file: $file:literal,
+                display: $display:literal,
+                parse: [ $($parse:literal),+ $(,)? ],
+            }
+        )*
+    ) => {
+        impl Model {
+            /// Every supported preset, in stable order (for CLI listing and tests).
+            pub const ALL: &[Model] = &[$( Model::$variant, )*];
+
+            const fn family(self) -> Family {
+                match self {
+                    $( Model::$variant => Family::$family, )*
+                }
+            }
+
+            pub fn gguf_repo(self) -> &'static str {
+                match self {
+                    $( Model::$variant => $repo, )*
+                }
+            }
+
+            pub fn gguf_filename(self) -> &'static str {
+                match self {
+                    $( Model::$variant => $file, )*
+                }
+            }
+        }
+
+        impl fmt::Display for Model {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $( Model::$variant => f.write_str($display), )*
+                }
+            }
+        }
+
+        impl FromStr for Model {
+            type Err = String;
+
+            /// Parses the canonical id from [`fmt::Display`], ASCII case-insensitive.
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s.trim().to_ascii_lowercase().as_str() {
+                    $( $( $parse => Ok(Model::$variant), )+ )*
+                    other => {
+                        let list = Model::ALL
+                            .iter()
+                            .map(|m| m.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        Err(format!(
+                            "unknown model `{other}`; supported models (ids are ASCII case-insensitive): {list}"
+                        ))
+                    }
+                }
+            }
+        }
+    };
+}
+
+model_preset_dispatch! {
+    Qwen35_0_8B => Qwen35 {
+        repo: "unsloth/Qwen3.5-0.8B-GGUF",
+        file: "Qwen3.5-0.8B-Q4_K_M.gguf",
+        display: "qwen3.5:0.8b",
+        parse: ["qwen3.5:0.8b"],
+    }
+    Qwen35_2B => Qwen35 {
+        repo: "unsloth/Qwen3.5-2B-GGUF",
+        file: "Qwen3.5-2B-Q4_K_M.gguf",
+        display: "qwen3.5:2b",
+        parse: ["qwen3.5:2b"],
+    }
+    Qwen35_4B => Qwen35 {
+        repo: "unsloth/Qwen3.5-4B-GGUF",
+        file: "Qwen3.5-4B-Q4_K_M.gguf",
+        display: "qwen3.5:4b",
+        parse: ["qwen3.5:4b"],
+    }
+    Qwen35_9B => Qwen35 {
+        repo: "unsloth/Qwen3.5-9B-GGUF",
+        file: "Qwen3.5-9B-Q4_K_M.gguf",
+        display: "qwen3.5:9b",
+        parse: ["qwen3.5:9b"],
+    }
+    Qwen35_27B => Qwen35 {
+        repo: "unsloth/Qwen3.5-27B-GGUF",
+        file: "Qwen3.5-27B-Q4_K_M.gguf",
+        display: "qwen3.5:27b",
+        parse: ["qwen3.5:27b"],
+    }
+    Qwen35_35B => Qwen35 {
+        repo: "unsloth/Qwen3.5-35B-A3B-GGUF",
+        file: "Qwen3.5-35B-A3B-Q4_K_M.gguf",
+        display: "qwen3.5:35b",
+        parse: ["qwen3.5:35b"],
+    }
+    DeepSeekR1_1_5B => DeepSeekR1 {
+        repo: "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+        file: "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        display: "deepseek-r1:1.5b",
+        parse: ["deepseek-r1:1.5b"],
+    }
+    DeepSeekR1_7B => DeepSeekR1 {
+        repo: "unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+        file: "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+        display: "deepseek-r1:7b",
+        parse: ["deepseek-r1:7b"],
+    }
+    DeepSeekR1_14B => DeepSeekR1 {
+        repo: "unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+        file: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+        display: "deepseek-r1:14b",
+        parse: ["deepseek-r1:14b"],
+    }
+    DeepSeekR1_32B => DeepSeekR1 {
+        repo: "unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+        file: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+        display: "deepseek-r1:32b",
+        parse: ["deepseek-r1:32b"],
+    }
+    Gemma4_2B => Gemma4 {
+        repo: "unsloth/gemma-4-E2B-it-GGUF",
+        file: "gemma-4-E2B-it-Q4_K_M.gguf",
+        display: "gemma4:2b",
+        parse: ["gemma4:2b"],
+    }
+    Gemma4_4B => Gemma4 {
+        repo: "unsloth/gemma-4-E4B-it-GGUF",
+        file: "gemma-4-E4B-it-Q4_K_M.gguf",
+        display: "gemma4:4b",
+        parse: ["gemma4:4b"],
+    }
+    Gemma4_26B => Gemma4 {
+        repo: "unsloth/gemma-4-26B-A4B-it-GGUF",
+        file: "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+        display: "gemma4:26b",
+        parse: ["gemma4:26b"],
+    }
+    Gemma4_31B => Gemma4 {
+        repo: "unsloth/gemma-4-31B-it-GGUF",
+        file: "gemma-4-31B-it-Q4_K_M.gguf",
+        display: "gemma4:31b",
+        parse: ["gemma4:31b"],
+    }
+    Lfm25_1_2B => Lfm25 {
+        repo: "LiquidAI/LFM2.5-1.2B-Instruct-GGUF",
+        file: "LFM2.5-1.2B-Instruct-Q4_K_M.gguf",
+        display: "lfm2.5:1.2b",
+        parse: ["lfm2.5:1.2b"],
+    }
 }
 
 /// Sampling hyperparameters aligned with each model family’s typical HF / vendor defaults for chat.
@@ -43,40 +216,29 @@ pub(crate) struct RecommendedSampling {
     pub top_k: Option<i32>,
 }
 
-impl ModelFamily {
+impl Model {
     pub(crate) fn recommended_sampling(self) -> RecommendedSampling {
-        match self {
-            ModelFamily::Qwen35_0_8B
-            | ModelFamily::Qwen35_2B
-            | ModelFamily::Qwen35_4B
-            | ModelFamily::Qwen35_9B
-            | ModelFamily::Qwen35_27B
-            | ModelFamily::Qwen35_35B
-            | ModelFamily::Qwen35_122B => RecommendedSampling {
+        use Family::*;
+        match self.family() {
+            Qwen35 => RecommendedSampling {
                 // Deterministic decoding for concise, grounded summaries (Qwen chat cards use greedy for eval-style tasks).
                 temperature: 0.0,
                 top_p: None,
                 top_k: None,
             },
-            ModelFamily::DeepSeekR1_1_5B
-            | ModelFamily::DeepSeekR1_7B
-            | ModelFamily::DeepSeekR1_14B
-            | ModelFamily::DeepSeekR1_32B => RecommendedSampling {
+            DeepSeekR1 => RecommendedSampling {
                 // Matches `generation_config` on `deepseek-ai/DeepSeek-R1-Distill-Qwen-*` (temperature / top_p).
                 temperature: 0.6,
                 top_p: Some(0.95),
                 top_k: None,
             },
-            ModelFamily::Gemma4_26B
-            | ModelFamily::Gemma4_31B
-            | ModelFamily::Gemma4_E4B
-            | ModelFamily::Gemma4_E2B => RecommendedSampling {
+            Gemma4 => RecommendedSampling {
                 // Grounded summaries; Gemma IT cards often use higher T for chat — greedy keeps index text stable.
                 temperature: 0.0,
                 top_p: None,
                 top_k: None,
             },
-            ModelFamily::Lfm25_1_2B => RecommendedSampling {
+            Lfm25 => RecommendedSampling {
                 // Light nucleus sampling; stable summaries while allowing the thinking-trained head room.
                 temperature: 0.35,
                 top_p: Some(0.9),
@@ -85,318 +247,176 @@ impl ModelFamily {
         }
     }
 
-    pub const QWEN_ALL: &[ModelFamily] = &[
-        ModelFamily::Qwen35_0_8B,
-        ModelFamily::Qwen35_2B,
-        ModelFamily::Qwen35_4B,
-        ModelFamily::Qwen35_9B,
-        ModelFamily::Qwen35_27B,
-        ModelFamily::Qwen35_35B,
-        ModelFamily::Qwen35_122B,
-    ];
-
-    pub fn gguf_repo(self) -> &'static str {
-        match self {
-            ModelFamily::Qwen35_0_8B => "unsloth/Qwen3.5-0.8B-GGUF",
-            ModelFamily::Qwen35_2B => "unsloth/Qwen3.5-2B-GGUF",
-            ModelFamily::Qwen35_4B => "unsloth/Qwen3.5-4B-GGUF",
-            ModelFamily::Qwen35_9B => "unsloth/Qwen3.5-9B-GGUF",
-            ModelFamily::Qwen35_27B => "unsloth/Qwen3.5-27B-GGUF",
-            ModelFamily::Qwen35_35B => "unsloth/Qwen3.5-35B-A3B-GGUF",
-            ModelFamily::Qwen35_122B => "unsloth/Qwen3.5-122B-A10B-GGUF",
-            ModelFamily::DeepSeekR1_1_5B => "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
-            ModelFamily::DeepSeekR1_7B => "unsloth/DeepSeek-R1-Distill-Qwen-7B-GGUF",
-            ModelFamily::DeepSeekR1_14B => "unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-            ModelFamily::DeepSeekR1_32B => "unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF",
-            ModelFamily::Gemma4_26B => "unsloth/gemma-4-26B-A4B-it-GGUF",
-            ModelFamily::Gemma4_31B => "unsloth/gemma-4-31B-it-GGUF",
-            ModelFamily::Gemma4_E4B => "unsloth/gemma-4-E4B-it-GGUF",
-            ModelFamily::Gemma4_E2B => "unsloth/gemma-4-E2B-it-GGUF",
-            ModelFamily::Lfm25_1_2B => "LiquidAI/LFM2.5-1.2B-Thinking-GGUF",
-        }
+    pub fn format_summary_prompt(self, article: &str) -> String {
+        let user = format!(
+            "summary article:\n{article}\n**Respond in the same language as the provided article**"
+        );
+        self.format_prompt(SYSTEM_PROMPT, &user)
     }
 
-    pub fn gguf_filename(self) -> &'static str {
-        match self {
-            ModelFamily::Qwen35_0_8B => "Qwen3.5-0.8B-Q4_K_M.gguf",
-            ModelFamily::Qwen35_2B => "Qwen3.5-2B-Q4_K_M.gguf",
-            ModelFamily::Qwen35_4B => "Qwen3.5-4B-Q4_K_M.gguf",
-            ModelFamily::Qwen35_9B => "Qwen3.5-9B-Q4_K_M.gguf",
-            ModelFamily::Qwen35_27B => "Qwen3.5-27B-Q4_K_M.gguf",
-            ModelFamily::Qwen35_35B => "Qwen3.5-35B-A3B-Q4_K_M.gguf",
-            ModelFamily::Qwen35_122B => "Qwen3.5-122B-A10B-Q4_K_M.gguf",
-            ModelFamily::DeepSeekR1_1_5B => "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
-            ModelFamily::DeepSeekR1_7B => "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
-            ModelFamily::DeepSeekR1_14B => "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
-            ModelFamily::DeepSeekR1_32B => "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
-            ModelFamily::Gemma4_26B => "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
-            ModelFamily::Gemma4_31B => "gemma-4-31B-it-Q4_K_M.gguf",
-            ModelFamily::Gemma4_E4B => "gemma-4-E4B-it-Q4_K_M.gguf",
-            ModelFamily::Gemma4_E2B => "gemma-4-E2B-it-Q4_K_M.gguf",
-            ModelFamily::Lfm25_1_2B => "LFM2.5-1.2B-Thinking-Q4_K_M.gguf",
-        }
-    }
-
-    /// Wrap `user` turn + assistant header per model chat template (Qwen: `/no_think`; LFM: HF `chat_template.jinja`).
-    pub fn format_chat_prompt(self, user_message: &str) -> String {
-        let im_start = concat!("<|", "im_start", "|>");
-        match self {
-            ModelFamily::Qwen35_0_8B
-            | ModelFamily::Qwen35_2B
-            | ModelFamily::Qwen35_4B
-            | ModelFamily::Qwen35_9B
-            | ModelFamily::Qwen35_27B
-            | ModelFamily::Qwen35_35B
-            | ModelFamily::Qwen35_122B => {
-                let im_end = concat!("<|", "im_end", "|>");
-                format!("{im_start}user\n{user_message}/no_think{im_end}\n{im_start}assistant\n")
+    /// System + user turns and the assistant generation header, aligned with each family’s HF chat template
+    pub fn format_prompt(self, system: &str, user: &str) -> String {
+        use Family::*;
+        match self.family() {
+            Qwen35 => {
+                format!(
+                    "<|im_start|>system\n{system}<|im_end|>\n\
+                    <|im_start|>user\n{user}\n/nothink<|im_end|>\n\
+                    <|im_start|>assistant\n\
+                    <think>\n\n</think>\n\n"
+                )
             }
-            ModelFamily::DeepSeekR1_1_5B
-            | ModelFamily::DeepSeekR1_7B
-            | ModelFamily::DeepSeekR1_14B
-            | ModelFamily::DeepSeekR1_32B => {
-                // Matches `deepseek-ai-DeepSeek-R1-Distill-Qwen-*.jinja` in llama.cpp (HF `chat_template`).
-                let bos = concat!("<|", "redacted_begin_of_sentence", "|>");
-                let u = concat!("<|", "redacted_User", "|>");
-                let a = concat!("<|", "redacted_Assistant", "|>");
-                format!("{bos}{u}{user_message}{a} \n")
+            DeepSeekR1 => {
+                format!("<｜User｜>\n{system}\n{user}\n/nothink<｜Assistant｜>")
             }
-            ModelFamily::Gemma4_26B
-            | ModelFamily::Gemma4_31B
-            | ModelFamily::Gemma4_E4B
-            | ModelFamily::Gemma4_E2B => {
-                // `models/templates/gemma4.jinja` in llama.cpp (HF `chat_template`); `bos_token` matches Gemma 4 tokenizer.
-                let bos = concat!("<|", "bos", "|>");
-                let turn_user = concat!("<|", "turn>user\n");
-                let turn_model = concat!("<|", "turn>model\n");
-                let ch_thought = concat!("<|", "channel>thought\n ");
-                let u = user_message.trim();
-                format!("{bos}{turn_user}{u} \n{turn_model}{ch_thought}")
+            Gemma4 => {
+                // `tmp/gemma4.json` documents `bos_token` as `<bos>`; llama.cpp Gemma 4 template uses `<|bos|>` / `<|turn>`.
+                format!(
+                    "<start_of_turn>system\n{system}<end_of_turn>\
+                    <start_of_turn>user\n{user}\n/nothink<end_of_turn>\
+                    <start_of_turn>model\n"
+                )
             }
-            ModelFamily::Lfm25_1_2B => {
-                let bos = concat!("<|", "startoftext", "|>");
-                let im_end = concat!("<|", "redacted_im_end", "|>");
-                format!("{bos}{im_start}user\n{user_message}{im_end}\n{im_start}assistant\n")
+            Lfm25 => {
+                format!(
+                    "<|startoftext|><|im_start|>system\n{system}<|im_end|>\n\
+                    <|im_start|>user\n{user}\n/nothink<|im_end|>\n\
+                    <|im_start|>assistant\n"
+                )
             }
         }
     }
 
-    /// Strip model-specific reasoning / CoT spans from decoded text.
-    pub fn postprocess_output(self, text: &str) -> String {
-        match self {
-            ModelFamily::Qwen35_0_8B
-            | ModelFamily::Qwen35_2B
-            | ModelFamily::Qwen35_4B
-            | ModelFamily::Qwen35_9B
-            | ModelFamily::Qwen35_27B
-            | ModelFamily::Qwen35_35B
-            | ModelFamily::Qwen35_122B
-            | ModelFamily::DeepSeekR1_1_5B
-            | ModelFamily::DeepSeekR1_7B
-            | ModelFamily::DeepSeekR1_14B
-            | ModelFamily::DeepSeekR1_32B => crate::postprocess::qwen35_output(text),
-            ModelFamily::Gemma4_26B
-            | ModelFamily::Gemma4_31B
-            | ModelFamily::Gemma4_E4B
-            | ModelFamily::Gemma4_E2B => crate::postprocess::gemma4_output(text),
-            ModelFamily::Lfm25_1_2B => crate::postprocess::lfm25_output(text),
-        }
-    }
-
-    /// After each decoded piece, remove known end-of-generation fragments and return whether to stop decoding.
-    pub(crate) fn strip_stream_delimiters_and_should_stop(self, text: &mut String) -> bool {
-        let im_end = concat!("<|", "im_end", "|>");
-        let im_end_alt = concat!("<|", "redacted_im_end", "|>");
-        let ds_eos = concat!("<|", "redacted_end_of_sentence", "|>");
-        let mut stop = false;
-        if text.contains(im_end) || text.contains(im_end_alt) || text.contains("</s>") {
-            *text = text
-                .replace(im_end, "")
-                .replace(im_end_alt, "")
-                .replace("</s>", "");
-            stop = true;
-        }
-        if matches!(
-            self,
-            ModelFamily::DeepSeekR1_1_5B
-                | ModelFamily::DeepSeekR1_7B
-                | ModelFamily::DeepSeekR1_14B
-                | ModelFamily::DeepSeekR1_32B
-        ) && text.contains(ds_eos)
-        {
-            *text = text.replace(ds_eos, "");
-            stop = true;
-        }
-        if matches!(
-            self,
-            ModelFamily::Gemma4_26B
-                | ModelFamily::Gemma4_31B
-                | ModelFamily::Gemma4_E4B
-                | ModelFamily::Gemma4_E2B
-        ) {
-            let eos = concat!("<|", "eos", "|>");
-            let eot = concat!("<|", "eot", "|>");
-            let turn = concat!("<|", "turn>");
-            if text.contains(eos) {
-                *text = text.replace(eos, "");
-                stop = true;
-            }
-            if text.contains(eot) {
-                *text = text.replace(eot, "");
-                stop = true;
-            }
-            if let Some(i) = text.find(turn) {
-                text.truncate(i);
-                stop = true;
-            }
-        }
-        stop
+    pub(crate) fn response_parser(&self) -> ResponseParser {
+        ResponseParser::new(self.family())
     }
 }
 
-impl fmt::Display for ModelFamily {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ModelFamily::Qwen35_0_8B => write!(f, "qwen3.5:0.8b"),
-            ModelFamily::Qwen35_2B => write!(f, "qwen3.5:2b"),
-            ModelFamily::Qwen35_4B => write!(f, "qwen3.5:4b"),
-            ModelFamily::Qwen35_9B => write!(f, "qwen3.5:9b"),
-            ModelFamily::Qwen35_27B => write!(f, "qwen3.5:27b"),
-            ModelFamily::Qwen35_35B => write!(f, "qwen3.5:35b"),
-            ModelFamily::Qwen35_122B => write!(f, "qwen3.5:122b"),
-            ModelFamily::DeepSeekR1_1_5B => f.write_str("deepseek-r1:1.5b"),
-            ModelFamily::DeepSeekR1_7B => f.write_str("deepseek-r1:7b"),
-            ModelFamily::DeepSeekR1_14B => f.write_str("deepseek-r1:14b"),
-            ModelFamily::DeepSeekR1_32B => f.write_str("deepseek-r1:32b"),
-            ModelFamily::Gemma4_26B => f.write_str("gemma4:26b"),
-            ModelFamily::Gemma4_31B => f.write_str("gemma4:31b"),
-            ModelFamily::Gemma4_E4B => f.write_str("gemma:e4b"),
-            ModelFamily::Gemma4_E2B => f.write_str("gemmae2b"),
-            ModelFamily::Lfm25_1_2B => f.write_str("lfm2.5:1.2b"),
-        }
-    }
+pub(crate) struct ResponseParser {
+    think_start_token: &'static str,
+    think_end_token: &'static str,
+    text: String,
 }
 
-impl FromStr for ModelFamily {
-    type Err = String;
-
-    /// Parses the canonical id from [`fmt::Display`], ASCII case-insensitive.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        const HINT: &str = "use the id from `Display`, e.g. qwen3.5:0.8b, deepseek-r1:7b, gemma4:26b, gemmae2b, lfm2.5:1.2b";
-        match s.trim().to_ascii_lowercase().as_str() {
-            "qwen3.5:0.8b" => Ok(ModelFamily::Qwen35_0_8B),
-            "qwen3.5:2b" => Ok(ModelFamily::Qwen35_2B),
-            "qwen3.5:4b" => Ok(ModelFamily::Qwen35_4B),
-            "qwen3.5:9b" => Ok(ModelFamily::Qwen35_9B),
-            "qwen3.5:27b" => Ok(ModelFamily::Qwen35_27B),
-            "qwen3.5:35b" => Ok(ModelFamily::Qwen35_35B),
-            "qwen3.5:122b" => Ok(ModelFamily::Qwen35_122B),
-            "deepseek-r1:1.5b" => Ok(ModelFamily::DeepSeekR1_1_5B),
-            "deepseek-r1:7b" => Ok(ModelFamily::DeepSeekR1_7B),
-            "deepseek-r1:14b" => Ok(ModelFamily::DeepSeekR1_14B),
-            "deepseek-r1:32b" => Ok(ModelFamily::DeepSeekR1_32B),
-            "gemma4:26b" => Ok(ModelFamily::Gemma4_26B),
-            "gemma4:31b" => Ok(ModelFamily::Gemma4_31B),
-            "gemma:e4b" => Ok(ModelFamily::Gemma4_E4B),
-            "gemmae2b" => Ok(ModelFamily::Gemma4_E2B),
-            "lfm2.5:1.2b" => Ok(ModelFamily::Lfm25_1_2B),
-            other => Err(format!("unknown model `{other}`; {HINT}")),
+impl ResponseParser {
+    fn new(family: Family) -> Self {
+        use Family::*;
+        let (think_start_token, think_end_token) = match family {
+            Qwen35 => ("<think>", "</think>"),
+            DeepSeekR1 => ("<think>", "</think>"),
+            Gemma4 => ("<|channel>", "<channel|>"),
+            Lfm25 => ("<think>", "</think>"),
+        };
+        Self {
+            think_end_token,
+            think_start_token,
+            text: String::new(),
         }
+    }
+
+    pub fn feed(&mut self, token: &str) {
+        self.text.push_str(token);
+    }
+
+    pub fn finally(&mut self) -> String {
+        let Some(start) = self.text.find(self.think_start_token) else {
+            return self.text.trim().to_string();
+        };
+        let Some(end) = self.text[start..].find(self.think_end_token) else {
+            return self.text.trim().to_string();
+        };
+        self.text[end+self.think_end_token.len()..].trim().to_string()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prompt::build_user_message;
+
+    #[test]
+    fn from_str_unknown_includes_full_model_list() {
+        let err = "not-a-model".parse::<Model>().unwrap_err();
+        assert!(err.contains("qwen3.5:0.8b"), "{err}");
+        assert!(err.contains("lfm2.5:1.2b"), "{err}");
+        assert!(err.contains("not-a-model"), "{err}");
+    }
 
     #[test]
     fn from_str_matches_display_case_insensitive() {
-        assert_eq!(
-            "LFM2.5:1.2B".parse::<ModelFamily>().unwrap(),
-            ModelFamily::Lfm25_1_2B
-        );
-        assert_eq!(
-            "Qwen3.5:2b".parse::<ModelFamily>().unwrap(),
-            ModelFamily::Qwen35_2B
-        );
+        assert_eq!("LFM2.5:1.2B".parse::<Model>().unwrap(), Model::Lfm25_1_2B);
+        assert_eq!("Qwen3.5:2b".parse::<Model>().unwrap(), Model::Qwen35_2B);
     }
 
     #[test]
     fn display_roundtrips_via_from_str() {
-        let all = [
-            ModelFamily::Qwen35_0_8B,
-            ModelFamily::Qwen35_2B,
-            ModelFamily::Qwen35_4B,
-            ModelFamily::Qwen35_9B,
-            ModelFamily::Qwen35_27B,
-            ModelFamily::Qwen35_35B,
-            ModelFamily::Qwen35_122B,
-            ModelFamily::DeepSeekR1_1_5B,
-            ModelFamily::DeepSeekR1_7B,
-            ModelFamily::DeepSeekR1_14B,
-            ModelFamily::DeepSeekR1_32B,
-            ModelFamily::Gemma4_26B,
-            ModelFamily::Gemma4_31B,
-            ModelFamily::Gemma4_E4B,
-            ModelFamily::Gemma4_E2B,
-            ModelFamily::Lfm25_1_2B,
-        ];
-        for m in all {
+        for &m in Model::ALL {
             let s = m.to_string();
-            let parsed: ModelFamily = s.parse().expect("roundtrip");
+            let parsed: Model = s.parse().expect("roundtrip");
             assert_eq!(parsed, m, "{s}");
         }
     }
 
     #[test]
-    fn deepseek_chat_prompt_matches_llama_cpp_template() {
-        let bos = concat!("<|", "redacted_begin_of_sentence", "|>");
-        let u = concat!("<|", "redacted_User", "|>");
-        let a = concat!("<|", "redacted_Assistant", "|>");
-        let body = build_user_message("hi");
-        let p = ModelFamily::DeepSeekR1_7B.format_chat_prompt(&body);
-        assert!(p.starts_with(bos));
-        assert!(p.contains(u));
-        assert!(p.contains(&body));
-        assert!(p.ends_with(&format!("{a} \n")));
+    fn response_parser_qwen_plain_text_two_feeds_keeps_output() {
+        let mut p = Model::Qwen35_2B.response_parser();
+        p.feed("This prefix is long enough.");
+        p.feed(" Rest.");
+        let text = p.finally();
+        assert_eq!(text, "This prefix is long enough. Rest.");
     }
 
     #[test]
-    fn qwen_chat_prompt_contains_no_think_and_roles() {
-        let im_start = concat!("<|", "im_start", "|>");
-        let u = build_user_message("hello");
-        let p = ModelFamily::Qwen35_0_8B.format_chat_prompt(&u);
-        assert!(p.contains("/no_think"));
-        assert!(p.contains(&format!("{im_start}user")));
-        assert!(p.contains(&format!("{im_start}assistant")));
+    fn response_parser_qwen_strips_think_block() {
+        let mut p = Model::Qwen35_2B.response_parser();
+        p.feed("<think>work");
+        p.feed("ing</think>Answer.");
+        p.feed("");
+        let text = p.finally();
+        assert_eq!(text, "Answer.");
     }
 
     #[test]
-    fn lfm_chat_prompt_matches_hf_template() {
-        let bos = concat!("<|", "startoftext", "|>");
-        let im_start = concat!("<|", "im_start", "|>");
-        let im_end = concat!("<|", "redacted_im_end", "|>");
-        let u = build_user_message("hello");
-        let p = ModelFamily::Lfm25_1_2B.format_chat_prompt(&u);
-        assert!(p.starts_with(bos));
-        assert!(p.contains(&format!("{im_start}user\n{u}{im_end}")));
-        assert!(p.ends_with(&format!("{im_start}assistant\n")));
-        assert!(!p.contains("/no_think"));
+    fn response_parser_finally_clears_when_stuck_in_expect_think_start() {
+        let mut p = Model::Qwen35_2B.response_parser();
+        let chunk = "Single long chunk with no think tags.";
+        p.feed(chunk);
+        let text = p.finally();
+        assert_eq!(text, chunk);
     }
 
     #[test]
-    fn gemma4_chat_prompt_matches_llama_cpp_template() {
-        let bos = concat!("<|", "bos", "|>");
-        let turn_user = concat!("<|", "turn>user\n");
-        let turn_model = concat!("<|", "turn>model\n");
-        let suffix = concat!("<|", "channel>thought\n ");
-        let u = build_user_message("hello");
-        let p = ModelFamily::Gemma4_E2B.format_chat_prompt(&u);
-        assert!(p.starts_with(bos));
-        assert!(p.contains(turn_user));
-        assert!(p.contains(turn_model));
-        assert!(p.ends_with(suffix));
-        assert!(p.contains(u.trim()));
+    fn response_parser_first_piece_trim_increments_skip_size() {
+        let mut p = Model::Qwen35_2B.response_parser();
+        p.feed("  padded start. ");
+        assert_eq!(p.finally(), "padded start.");
+        p.feed(" More text here.");
+        assert_eq!(p.finally(), "padded start.  More text here.");
+    }
+
+    #[test]
+    fn response_parser_gemma_strips_channel_block() {
+        let mut p = Model::Gemma4_2B.response_parser();
+        p.feed("<|channel>hidden");
+        p.feed("<channel|>Visible.");
+        p.feed("");
+        assert_eq!(p.finally(), "Visible.");
+    }
+
+    #[test]
+    fn response_parser_deepseek_plain_text_without_think_close_marker() {
+        let mut p = Model::DeepSeekR1_7B.response_parser();
+        p.feed("Long enough prefix here.");
+        p.feed(" Tail.");
+        assert_eq!(p.finally(), "Long enough prefix here. Tail.");
+    }
+
+    #[test]
+    fn response_parser_lfm_matches_qwen_think_tokens() {
+        let mut p = Model::Lfm25_1_2B.response_parser();
+        p.feed("<think>x");
+        p.feed("</think>OK");
+        p.feed("");
+        let text = p.finally();
+        assert_eq!(text, "OK");
     }
 }

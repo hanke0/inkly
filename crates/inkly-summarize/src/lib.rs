@@ -8,15 +8,13 @@
 
 mod error;
 mod model;
-mod postprocess;
-mod prompt;
 
 pub use error::SummarizeError;
-pub use model::ModelFamily;
+pub use model::Model;
 
 use hf_hub::{
-    api::sync::{Api, ApiBuilder},
     Repo, RepoType,
+    api::sync::{Api, ApiBuilder},
 };
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -29,8 +27,6 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tracing::instrument;
 
-use crate::prompt::build_user_message;
-
 /// Hard cap on the number of tokens generated after prefill.
 ///
 /// This is intentionally not configurable via API/CLI to keep decode latency bounded.
@@ -39,7 +35,7 @@ pub const INTERNAL_MAX_NEW_TOKENS: usize = 1024;
 /// Configuration for model files, decoding, and safety limits.
 #[derive(Debug, Clone)]
 pub struct SummarizerConfig {
-    pub model: ModelFamily,
+    pub model: Model,
     /// Repo that hosts the GGUF file when `gguf_path` is `None`.
     pub gguf_repo: String,
     pub gguf_revision: String,
@@ -60,7 +56,7 @@ pub struct SummarizerConfig {
 
 impl SummarizerConfig {
     /// Create a config for the given preset with sensible defaults (Q4_K_M where applicable).
-    pub fn with_model(model: ModelFamily) -> Self {
+    pub fn with_model(model: Model) -> Self {
         Self {
             model,
             gguf_repo: model.gguf_repo().to_string(),
@@ -73,7 +69,7 @@ impl SummarizerConfig {
 
 impl Default for SummarizerConfig {
     fn default() -> Self {
-        let model = ModelFamily::default();
+        let model = Model::default();
         Self {
             model,
             gguf_repo: model.gguf_repo().to_string(),
@@ -103,6 +99,10 @@ pub struct SummarizeBenchmark {
     pub prompt_tokens: usize,
     /// Total predicted tokens including the first token from prefill.
     pub generated_tokens: usize,
+    ///
+    pub generated_text_size: usize,
+    ///
+    pub output_text_size: usize,
     /// Tokens after the first prefill step (decode loop only).
     pub decode_phase_tokens: usize,
     pub prefill: Duration,
@@ -146,10 +146,12 @@ impl Summarizer {
         if !config.prefer_gpu {
             params = params.with_n_gpu_layers(0);
         }
-        let model = LlamaModel::load_from_file(&backend, &gguf_path, &params).map_err(|e| SummarizeError::GgufLoad {
+        let model = LlamaModel::load_from_file(&backend, &gguf_path, &params).map_err(|e| {
+            SummarizeError::GgufLoad {
                 path: gguf_path.clone(),
                 message: e.to_string(),
-            })?;
+            }
+        })?;
 
         Ok(Self {
             backend,
@@ -166,17 +168,16 @@ impl Summarizer {
 
     /// Same as [`summarize`](Self::summarize) but returns timing for prompt (prefill) vs decode.
     #[instrument(skip_all, fields(article_len = article.len()))]
-    pub fn summarize_benchmark(&mut self, article: &str) -> Result<(String, SummarizeBenchmark), SummarizeError> {
+    pub fn summarize_benchmark(
+        &mut self,
+        article: &str,
+    ) -> Result<(String, SummarizeBenchmark), SummarizeError> {
         let (text, bench) = self.summarize_internal(article, true)?;
         let bench = bench.ok_or(SummarizeError::Internal)?;
         Ok((text, bench))
     }
 
-    fn summarize_internal(
-        &mut self,
-        article: &str,
-        with_benchmark: bool,
-    ) -> Result<(String, Option<SummarizeBenchmark>), SummarizeError> {
+    fn build_prompt(&self, article: &str) -> Result<String, SummarizeError> {
         if article.trim().is_empty() {
             return Err(SummarizeError::EmptyArticle);
         }
@@ -189,12 +190,20 @@ impl Summarizer {
             return Err(SummarizeError::EmptyArticle);
         }
         let (body, _truncated) = clamp_chars(&plain, self.config.max_article_chars);
-        let user = build_user_message(&body);
-        let prompt = self.config.model.format_chat_prompt(&user);
-        tracing::trace!(prompt = %prompt, "summarize prompt");
+        let prompt = self.config.model.format_summary_prompt(&body);
+        Ok(prompt)
+    }
+
+    fn summarize_internal(
+        &mut self,
+        article: &str,
+        with_benchmark: bool,
+    ) -> Result<(String, Option<SummarizeBenchmark>), SummarizeError> {
+        let user = self.build_prompt(article)?;
+        tracing::trace!(prompt = %user, "summarize prompt");
         let prompt_tokens = self
             .model
-            .str_to_token(&prompt, AddBos::Never)
+            .str_to_token(&user, AddBos::Always)
             .map_err(|e| SummarizeError::Llama(e.to_string()))?;
         let prompt_token_count = prompt_tokens.len();
         let n_len = (prompt_token_count + INTERNAL_MAX_NEW_TOKENS) as i32;
@@ -223,20 +232,20 @@ impl Summarizer {
         }
         ctx.decode(&mut batch)
             .map_err(|e| SummarizeError::Llama(e.to_string()))?;
-        let prefill = prefill_start.elapsed();
 
         // --- decode loop ---
         let mut n_cur = batch.n_tokens();
         let mut decoder = encoding_rs::UTF_8.new_decoder();
         let mut sampler = build_sampler(&self.config);
-        let mut text = String::new();
         let mut generated_tokens = 0usize;
+        let mut generated_texts = 0usize;
+        let mut parser = self.config.model.response_parser();
+        let prefill = prefill_start.elapsed();
         let decode_start = Instant::now();
 
         while n_cur < n_len {
             let token = sampler.sample(&ctx, batch.n_tokens() - 1);
             sampler.accept(token);
-
             if self.model.is_eog_token(token) {
                 break;
             }
@@ -245,16 +254,9 @@ impl Summarizer {
                 .model
                 .token_to_piece(token, &mut decoder, true, None)
                 .map_err(|e| SummarizeError::Llama(e.to_string()))?;
-            text.push_str(&piece);
             generated_tokens += 1;
-
-            if self
-                .config
-                .model
-                .strip_stream_delimiters_and_should_stop(&mut text)
-            {
-                break;
-            }
+            generated_texts += piece.len();
+            parser.feed(&piece);
 
             batch.clear();
             batch
@@ -267,18 +269,20 @@ impl Summarizer {
             n_cur += 1;
         }
 
+        let text = parser.finally();
         let decode = decode_start.elapsed();
         std::io::stderr().flush().ok();
-
         let bench = with_benchmark.then_some(SummarizeBenchmark {
             prompt_tokens: prompt_token_count,
             generated_tokens,
             decode_phase_tokens: generated_tokens,
+            generated_text_size: generated_texts,
+            output_text_size: text.len(),
             prefill,
             decode,
         });
 
-        Ok((self.config.model.postprocess_output(&text), bench))
+        Ok((text, bench))
     }
 }
 
@@ -358,7 +362,11 @@ fn clean_converted_text(s: &str) -> String {
         }
         // Drop short nav-style bullet items (e.g. `* Home`, `* RSS`, `* About`)
         if let Some(rest) = trimmed.strip_prefix("* ") {
-            if rest.len() < 30 && !rest.contains(". ") && !rest.contains('，') && !rest.contains('。') {
+            if rest.len() < 30
+                && !rest.contains(". ")
+                && !rest.contains('，')
+                && !rest.contains('。')
+            {
                 continue;
             }
         }
@@ -500,7 +508,9 @@ mod tests {
 
     #[test]
     fn looks_like_html_detects_doctype() {
-        assert!(looks_like_html("<!DOCTYPE html><html><body>hi</body></html>"));
+        assert!(looks_like_html(
+            "<!DOCTYPE html><html><body>hi</body></html>"
+        ));
     }
 
     #[test]

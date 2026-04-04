@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use inkly_summarize::ModelFamily;
+use inkly_summarize::Model;
 
 #[derive(Clone)]
 pub struct Config {
@@ -17,7 +17,7 @@ pub struct Config {
     pub summarize_enabled: bool,
     /// Which GGUF preset to load. Default: Qwen3.5 0.8B.
     /// `SUMMARIZE_MODEL`: canonical id (see `inkly_summarize::ModelFamily` `Display`), e.g. `qwen3.5:0.8b`, `deepseek-r1:7b`, `gemma4:26b`, `gemmae2b`, `lfm2.5:1.2b`.
-    pub summarize_model: ModelFamily,
+    pub summarize_model: Model,
 }
 
 impl fmt::Debug for Config {
@@ -94,9 +94,9 @@ impl Config {
             ),
         };
 
-        let summarize_model: ModelFamily = match std::env::var("SUMMARIZE_MODEL") {
+        let summarize_model: Model = match std::env::var("SUMMARIZE_MODEL") {
             Ok(raw) => raw.parse().map_err(|e: String| e)?,
-            Err(_) => ModelFamily::default(),
+            Err(_) => Model::default(),
         };
 
         Ok(Self {
