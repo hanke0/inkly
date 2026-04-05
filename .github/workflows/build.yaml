@@ -34,19 +34,15 @@ jobs:
         platform:
           - os-name: Linux-x86_64-avx
             runs-on: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
             RUSTFLAGS: '-C target-cpu=x86-64-v3'
           - os-name: Linux-x86_64-sse
             runs-on: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
             RUSTFLAGS: '-C target-cpu=x86-64-v2'
           - os-name: Windows-x86_64
             runs-on: windows-latest
-            target: x86_64-pc-windows-msvc
             RUSTFLAGS: ''
           - os-name: macOS-aarch64
             runs-on: macOS-latest
-            target: aarch64-apple-darwin
             RUSTFLAGS: ''
 
     runs-on: ${{ matrix.platform.runs-on }}
@@ -70,30 +66,29 @@ jobs:
           shared-key: ${{ matrix.platform.target }}
 
       - name: Test
-        run: cargo test --locked --workspace --target ${{ matrix.platform.target }}
+        run: cargo test --locked --workspace
         env:
           RUSTFLAGS: ${{ matrix.platform.RUSTFLAGS }}
 
       - name: Build
-        run: cargo build --locked --release -p inkly --target ${{ matrix.platform.target }}
+        run: cargo build --locked --release -p inkly
         env:
           RUSTFLAGS: ${{ matrix.platform.RUSTFLAGS }}
 
       - name: Strip release binary
         if: runner.os != 'Windows'
-        run: strip "target/${{ matrix.platform.target }}/release/inkly"
+        run: strip "target/release/inkly"
 
       - name: Release artifact paths
         id: art
         shell: bash
         run: |
           set -euo pipefail
-          T="${{ matrix.platform.target }}"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "path=target/$T/release/inkly.exe" >> "$GITHUB_OUTPUT"
+            echo "path=target/release/inkly.exe" >> "$GITHUB_OUTPUT"
             echo "name=inkly-${{ matrix.platform.os-name }}.exe" >> "$GITHUB_OUTPUT"
           else
-            echo "path=target/$T/release/inkly" >> "$GITHUB_OUTPUT"
+            echo "path=target/release/inkly" >> "$GITHUB_OUTPUT"
             echo "name=inkly-${{ matrix.platform.os-name }}" >> "$GITHUB_OUTPUT"
           fi
 
