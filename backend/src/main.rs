@@ -98,16 +98,22 @@ fn main() {
             let root = documents_root.unwrap_or_else(|| config::data_dir().join("documents"));
             match inkly_search::migrate_storage_to_current(&root, staging_dir.as_deref()) {
                 Ok(report) => {
-                    println!(
-                        "migrate ok: {} document(s) across {} tenant(s); data_version is now {}",
-                        report.documents_migrated,
-                        report.tenant_count,
-                        inkly_search::STORAGE_DATA_VERSION
-                    );
-                    println!(
-                        "previous data directory: {}",
-                        report.previous_data_backup.display()
-                    );
+                    if report.noop {
+                        println!(
+                            "migrate: data_version already {}; nothing to do",
+                            inkly_search::STORAGE_DATA_VERSION
+                        );
+                    } else {
+                        println!(
+                            "migrate ok: {} document(s) across {} tenant(s); data_version is now {}",
+                            report.documents_migrated,
+                            report.tenant_count,
+                            inkly_search::STORAGE_DATA_VERSION
+                        );
+                        if let Some(ref p) = report.previous_data_backup {
+                            println!("previous data directory: {}", p.display());
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("migrate failed: {e}");

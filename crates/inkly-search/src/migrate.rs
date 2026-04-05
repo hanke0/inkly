@@ -31,10 +31,12 @@ pub const MIGRATE_FROM_DATA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MigrateReport {
+    /// `true` when `data_version` already matched the binary; no files were changed.
+    pub noop: bool,
     pub documents_migrated: usize,
     pub tenant_count: usize,
-    /// Where the pre-migrate `documents_root` directory was moved after success (full tree backup).
-    pub previous_data_backup: PathBuf,
+    /// Where the pre-migrate `documents_root` directory was moved after a real migration (full tree backup).
+    pub previous_data_backup: Option<PathBuf>,
 }
 
 fn get_str(doc: &TantivyDocument, field: Field) -> String {
@@ -178,6 +180,9 @@ fn prepare_staging_dir(staging: &Path) -> Result<()> {
 /// `documents_root` or nest inside it (and vice versa). For the final `rename` into `documents_root`, prefer the
 /// same filesystem as the live data (otherwise the OS may return `EXDEV`).
 ///
+/// If `version.data` already matches [`STORAGE_DATA_VERSION`](crate::storage_meta::STORAGE_DATA_VERSION),
+/// returns [`MigrateReport`] with `noop: true` and does not touch the filesystem.
+///
 /// Stop the API server before running (writers must not compete with this tool).
 pub fn migrate_storage_to_current(
     documents_root: &Path,
@@ -186,9 +191,12 @@ pub fn migrate_storage_to_current(
     let ver = storage_meta::read_version_data(documents_root)?;
 
     if ver.data_version == storage_meta::STORAGE_DATA_VERSION {
-        return Err(SearchError::InvalidInput(
-            "storage data_version already matches this binary; nothing to migrate".into(),
-        ));
+        return Ok(MigrateReport {
+            noop: true,
+            documents_migrated: 0,
+            tenant_count: 0,
+            previous_data_backup: None,
+        });
     }
 
     if ver.data_version != MIGRATE_FROM_DATA_VERSION {
@@ -322,9 +330,10 @@ pub fn migrate_storage_to_current(
     }
 
     Ok(MigrateReport {
+        noop: false,
         documents_migrated,
         tenant_count,
-        previous_data_backup: backup,
+        previous_data_backup: Some(backup),
     })
 }
 
@@ -415,13 +424,17 @@ mod tests {
         let report = migrate_storage_to_current(root, None).expect("migrate");
         assert_eq!(report.documents_migrated, 1);
         assert_eq!(report.tenant_count, 1);
+        assert!(!report.noop);
+        let backup_path = report
+            .previous_data_backup
+            .as_ref()
+            .expect("backup path after migrate");
         assert!(
-            report.previous_data_backup.is_dir(),
+            backup_path.is_dir(),
             "backup directory missing: {:?}",
-            report.previous_data_backup
+            backup_path
         );
-        let backup_ver =
-            storage_meta::read_version_data(&report.previous_data_backup).expect("backup version");
+        let backup_ver = storage_meta::read_version_data(backup_path).expect("backup version");
         assert_eq!(backup_ver.data_version, 2);
         assert_eq!(backup_ver.auto_increment, 2000);
 
@@ -504,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn migrate_idempotent_errors_when_already_current() {
+    fn migrate_noop_when_already_current() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path();
         storage_meta::write_version_data(
@@ -515,11 +528,10 @@ mod tests {
             },
         )
         .expect("write");
-        let err = migrate_storage_to_current(root, None).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("nothing to migrate"),
-            "unexpected message: {msg}"
-        );
+        let report = migrate_storage_to_current(root, None).expect("ok");
+        assert!(report.noop);
+        assert_eq!(report.documents_migrated, 0);
+        assert_eq!(report.tenant_count, 0);
+        assert!(report.previous_data_backup.is_none());
     }
 }
