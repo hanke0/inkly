@@ -13,10 +13,14 @@ on:
 jobs:
   lints:
     name: Lints
-    runs-on: ubuntu-latest
+    # Match Linux build runners (ubuntu-22.04 / glibc ~2.35) so rust-cache never
+    # restores target/ artifacts built on ubuntu-latest (glibc 2.39+).
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v1
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-lints-ubuntu-22.04
       - name: Format
         run: cargo fmt --check
       - name: Check
@@ -64,6 +68,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Include runs-on so caches from ubuntu-latest (newer glibc) are never
+          # restored on ubuntu-22.04 (breaks build-script binaries e.g. llama-cpp-sys-2).
+          prefix-key: v1-rust-${{ matrix.platform.runs-on }}
           shared-key: ${{ matrix.platform.os-name }}
 
       - name: Test
