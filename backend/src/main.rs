@@ -92,7 +92,7 @@ async fn run_server() {
         }
     };
 
-    let index = match IndexManager::open_or_create(&config.data_dir) {
+    let index = match IndexManager::open_or_create(&config.data_dir.join("documents")) {
         Ok(i) => i,
         Err(e) => {
             tracing::error!("startup error: failed to open index: {e}");

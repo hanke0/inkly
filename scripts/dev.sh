@@ -33,6 +33,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM HUP
 
+export RUSTFLAGS="-C target-cpu=native"
 cargo run --release -p inkly >backend.log 2>&1 &
 backend_pid=$!
 
