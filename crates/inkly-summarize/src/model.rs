@@ -1,16 +1,8 @@
-//! Summarizer presets: Qwen3.5, DeepSeek-R1-Distill-Qwen, Gemma 4 (Unsloth GGUF), and LFM2.5-Thinking.
-//!
-//! Chat framing matches Hugging Face `tokenizer_config.json` / `chat_template` token strings; the same
-//! literals are captured in repo `tmp/qwen3.5.json`, `tmp/deepseek-r1.json`, `tmp/gemma4.json`, and
-//! `tmp/lfm2.5.json` for reference (this crate does not read those files at runtime).
-
 use std::fmt;
 use std::str::FromStr;
 
-/// Default system instruction when callers do not supply their own (used by [`ModelFamily::format_summary_prompt`]).
 pub const SYSTEM_PROMPT: &str = "You are a summary assistant. Given an article, detect its main language. Output a short summary of the core knowledge (key facts, ideas, findings) in that same language. Keep it brief (3-5 sentences or 3-6 bullet points). Be neutral and factual. Skip fluff, opinions, examples. Output only the summary.";
 
-/// Supported GGUF presets (Unsloth Q4_K_M where noted; LFM from LiquidAI).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Model {
     // qwen3.5 family
@@ -248,39 +240,46 @@ impl Model {
     }
 
     pub fn format_summary_prompt(self, article: &str) -> String {
-        let user = format!(
-            "summary article:\n{article}\n**Respond in the same language as the provided article**"
-        );
-        self.format_prompt(SYSTEM_PROMPT, &user)
+        self.format_prompt(SYSTEM_PROMPT, article)
     }
 
     /// System + user turns and the assistant generation header, aligned with each family’s HF chat template
+    /// For more information:
+    /// https://github.com/ggml-org/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template
+    /// https://github.com/unslothai/unsloth/blob/main/unsloth/chat_templates.py
     pub fn format_prompt(self, system: &str, user: &str) -> String {
         use Family::*;
         match self.family() {
             Qwen35 => {
+                // Qwen3.5 uses <|im_start|>role\n...<|im_end|>\n format.(chatml sytle)
+                // https://huggingface.co/Qwen/Qwen3.5-9B/resolve/main/tokenizer_config.json
+                // Disable thinking here, it's unnecessary.
                 format!(
                     "<|im_start|>system\n{system}<|im_end|>\n\
-                    <|im_start|>user\n{user}\n/nothink<|im_end|>\n\
+                    <|im_start|>user\n{user}\n<|im_end|>\n\
                     <|im_start|>assistant\n\
                     <think>\n\n</think>\n\n"
                 )
             }
             DeepSeekR1 => {
-                format!("<｜User｜>\n{system}\n{user}\n/nothink<｜Assistant｜>")
+                // DeepSeek special format, no system role.
+                // https://ollama.com/library/deepseek-r1:latest/blobs/c5ad996bda6e
+                format!("<｜User｜>\n{system}\n\n{user}\n<｜Assistant｜>")
             }
             Gemma4 => {
-                // `tmp/gemma4.json` documents `bos_token` as `<bos>`; llama.cpp Gemma 4 template uses `<|bos|>` / `<|turn>`.
+                // Gemma-4 uses <|turn>role\n...<turn|>\n format, no system role.
+                // https://ai.google.dev/gemma/docs/core/prompt-structure
                 format!(
-                    "<start_of_turn>system\n{system}<end_of_turn>\
-                    <start_of_turn>user\n{user}\n/nothink<end_of_turn>\
-                    <start_of_turn>model\n"
+                    "<|turn>user\n{system}\n\n{user}<turn|>\
+                    <|turn>model\n"
                 )
             }
             Lfm25 => {
+                // Lfm2.5 uses <|startoftext|><|im_start|>role\n...<|im_end|>\n format.(chatml sytle with add_bos_token)
                 format!(
-                    "<|startoftext|><|im_start|>system\n{system}<|im_end|>\n\
-                    <|im_start|>user\n{user}\n/nothink<|im_end|>\n\
+                    "<|startoftext|>\
+                    <|im_start|>system\n{system}<|im_end|>\n\
+                    <|im_start|>user\n{user}\n<|im_end|>\n\
                     <|im_start|>assistant\n"
                 )
             }
