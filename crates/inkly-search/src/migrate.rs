@@ -380,12 +380,15 @@ mod tests {
     #[test]
     fn migrate_v2_to_current_preserves_docs_timestamps_and_search_cn() {
         let dir = tempdir().expect("tempdir");
-        let root = dir.path();
-        let idx_dir = storage_meta::index_dir(root);
+        // Use a child of the temp dir as documents_root: renaming the TempDir root itself fails on
+        // Windows (Access denied), and we must drop the test IndexWriter/Index before migrate runs.
+        let root = dir.path().join("documents");
+        fs::create_dir_all(&root).expect("mkdir documents root");
+        let idx_dir = storage_meta::index_dir(&root);
         fs::create_dir_all(&idx_dir).expect("mkdir index");
 
         storage_meta::write_version_data(
-            root,
+            &root,
             &VersionData {
                 data_version: 2,
                 auto_increment: 2000,
@@ -423,8 +426,10 @@ mod tests {
         d.add_text(tags, "x");
         w.add_document(d).expect("add");
         w.commit().expect("commit");
+        drop(w);
+        drop(index);
 
-        let report = migrate_storage_to_current(root, None).expect("migrate");
+        let report = migrate_storage_to_current(&root, None).expect("migrate");
         assert_eq!(report.documents_migrated, 1);
         assert_eq!(report.tenant_count, 1);
         assert!(!report.noop);
@@ -441,11 +446,11 @@ mod tests {
         assert_eq!(backup_ver.data_version, 2);
         assert_eq!(backup_ver.auto_increment, 2000);
 
-        let after = storage_meta::read_version_data(root).expect("read ver");
+        let after = storage_meta::read_version_data(&root).expect("read ver");
         assert_eq!(after.data_version, storage_meta::STORAGE_DATA_VERSION);
         assert_eq!(after.auto_increment, 2000);
 
-        let im = IndexManager::open_or_create(root).expect("open new");
+        let im = IndexManager::open_or_create(&root).expect("open new");
         let stored = im.get_document("tenant_a", 7).expect("get").expect("some");
         assert_eq!(stored.title, "北京笔记");
         assert_eq!(stored.content, "故宫与天安门");
@@ -507,6 +512,8 @@ mod tests {
         d.add_text(tags, "tag");
         w.add_document(d).expect("add");
         w.commit().expect("commit");
+        drop(w);
+        drop(index);
 
         assert!(!staging.exists());
         migrate_storage_to_current(&documents, Some(&staging)).expect("migrate");
