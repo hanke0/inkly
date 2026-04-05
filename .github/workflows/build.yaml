@@ -50,20 +50,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install musl toolchain (Linux)
-        if: contains(matrix.platform.target, 'musl')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ matrix.platform.target }}
+          shared-key: ${{ matrix.platform.os-name }}
 
       - name: Test
         run: cargo test --locked --workspace

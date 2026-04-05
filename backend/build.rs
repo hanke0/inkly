@@ -2,6 +2,23 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Run `npm` in a way that works on Windows (`npm` is normally `npm.cmd`, which `CreateProcess` does not resolve).
+fn npm_command(args: &[&str]) -> Command {
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("cmd.exe");
+        cmd.arg("/C").arg("npm");
+        cmd.args(args);
+        cmd
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = Command::new("npm");
+        cmd.args(args);
+        cmd
+    }
+}
+
 fn main() {
     println!("cargo:rerun-if-env-changed=SKIP_FRONTEND_BUILD");
 
@@ -53,8 +70,7 @@ fn main() {
     }
 
     // Install frontend deps from lockfile, then build so the backend binary embeds `frontend/dist`.
-    let ci_status = Command::new("npm")
-        .arg("ci")
+    let ci_status = npm_command(&["ci"])
         .current_dir(&frontend_dir)
         .status()
         .expect("failed to spawn npm ci");
@@ -66,9 +82,7 @@ fn main() {
         );
     }
 
-    let status = Command::new("npm")
-        .arg("run")
-        .arg("build")
+    let status = npm_command(&["run", "build"])
         .current_dir(&frontend_dir)
         .status()
         .expect("failed to spawn npm run build");
