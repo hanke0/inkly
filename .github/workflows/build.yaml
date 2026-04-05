@@ -1,0 +1,75 @@
+# .github/workflows/release.yml
+
+name: Build
+
+on:
+  release:
+    types: [created]
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: Swatinem/rust-cache@v1
+      - name: Format
+        run: cargo fmt --check
+      - name: Check
+        run: cargo check --all-targets
+      - name: Clippy
+        run: cargo clippy --no-deps --all-targets -- -D warnings
+
+  build:
+    name: Build - ${{ matrix.platform.os-name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os-name: Linux-x86_64-avx
+            runs-on: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            RUSTFLAGS: '-C target-cpu=x86-64-v3'
+          - os-name: Linux-x86_64-sse
+            runs-on: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            RUSTFLAGS: '-C target-cpu=x86-64-v2'
+          - os-name: Windows-x86_64
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os-name: macOS-aarch64
+            runs-on: macOS-latest
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Test
+        uses: houseabsolute/actions-rust-cross@v1
+        if: ${{ matrix.platform.target != 'x86_64-unknown-freebsd' }}
+        with:
+          command: test
+          target: ${{ matrix.platform.target }}
+          args: ''
+      - name: Build
+        uses: houseabsolute/actions-rust-cross@v1
+        env:
+          RUSTFLAGS: ${{ matrix.platform.RUSTFLAGS }}
+        with:
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: '--locked --release'
+          strip: true
+      - name: Publish artifacts and release
+        if: ${{ github.event_name == 'release' && github.event.action == 'created' }}
+        uses: houseabsolute/actions-rust-release@v0
+        with:
+          executable-name: rtunnel
+          target: ${{ matrix.platform.target }}
+          changes-file: ''
+          extra-files: ''
