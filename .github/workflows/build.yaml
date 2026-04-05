@@ -92,6 +92,12 @@ jobs:
             echo "name=inkly-${{ matrix.platform.os-name }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkly-${{ matrix.platform.os-name }}
+          path: ${{ steps.art.outputs.path }}
+
       - name: Publish artifacts and release
         if: github.event_name == 'release' && github.event.action == 'created'
         uses: svenstaro/upload-release-action@v2
