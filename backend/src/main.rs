@@ -10,6 +10,7 @@ mod static_assets;
 
 use crate::locale::locale_middleware;
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, Method};
 use axum::middleware;
 use axum::routing::{get, post};
@@ -176,6 +177,8 @@ async fn run_server() {
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(RequestBodyLimitLayer::new(config.max_body_bytes))
+        // Multipart uses `with_limited_body()` (default 2 MiB); align with tower body cap so large uploads are not truncated mid-stream.
+        .layer(DefaultBodyLimit::max(config.max_body_bytes))
         .layer(cors_layer)
         .fallback(static_assets::spa_fallback)
         .with_state(state);

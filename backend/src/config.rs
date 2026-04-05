@@ -52,10 +52,29 @@ impl Config {
 
         let password = std::env::var("PASSWORD").map_err(|_| "Missing PASSWORD".to_string())?;
 
-        let max_body_bytes = std::env::var("MAX_BODY_BYTES")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(1024 * 1024); // 1MiB
+        // Default generous enough for document uploads; must match `DefaultBodyLimit` in main (see axum Multipart).
+        const DEFAULT_MAX_BODY_BYTES: usize = 32 * 1024 * 1024; // 32 MiB
+        let max_body_bytes = match std::env::var("MAX_BODY_BYTES") {
+            Err(_) => DEFAULT_MAX_BODY_BYTES,
+            Ok(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(
+                        "MAX_BODY_BYTES is set but empty; use a positive integer (bytes) or unset for default"
+                            .to_string(),
+                    );
+                }
+                let n: usize = trimmed.parse().map_err(|_| {
+                    format!(
+                        "MAX_BODY_BYTES must be a non-negative integer (bytes); failed to parse {trimmed:?}"
+                    )
+                })?;
+                if n == 0 {
+                    return Err("MAX_BODY_BYTES must be greater than zero".to_string());
+                }
+                n
+            }
+        };
 
         let summarize_enabled = std::env::var("SUMMARIZE_ENABLED")
             .ok()

@@ -14,7 +14,7 @@ alwaysApply: true
 - Prefer `serde`-serializable structs/enums over `Value` / untyped maps.
 
 # Quality
-- No `unwrap()` / `expect()` in request paths or background tasks; handle errors explicitly.
+- No `unwrap()` / `expect()` in request paths or background tasks; handle errors explicitly.(except in main.rs)
 - Use `tracing` with structured fields (request id, tenant, document id).
 - **Log levels** (prod often `info`): **ERROR** — server/op failed, needs fix; not for normal 4xx validation. **WARN** — degraded but continued (optional feature failed, retries). **INFO** — lifecycle, boundaries, coarse metrics; avoid spam on hot paths. **DEBUG** — diagnostics (sanitized). **TRACE** — very verbose / inner loops; rare.
 - Add tests for non-trivial behavior (query semantics, indexing, API error mapping).
