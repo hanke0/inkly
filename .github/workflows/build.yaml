@@ -32,11 +32,13 @@ jobs:
       fail-fast: false
       matrix:
         platform:
+          # Jammy glibc ~2.35; Debian 12 (bookworm) ships glibc 2.36, so CI-built
+          # Linux binaries run there. 24.04 targets glibc 2.38+ and breaks bookworm.
           - os-name: Linux-x86_64-avx
-            runs-on: ubuntu-24.04
+            runs-on: ubuntu-22.04
             RUSTFLAGS: '-C target-cpu=x86-64-v3'
           - os-name: Linux-x86_64-sse
-            runs-on: ubuntu-24.04
+            runs-on: ubuntu-22.04
             RUSTFLAGS: '-C target-cpu=x86-64-v2'
           - os-name: Windows-x86_64
             runs-on: windows-latest
