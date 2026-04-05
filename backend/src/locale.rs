@@ -43,6 +43,7 @@ struct LangRange<'a> {
     quality: f32,
 }
 
+#[allow(clippy::collapsible_if)]
 fn parse_accept_language(raw: &str) -> Option<Locale> {
     let mut ranges: Vec<LangRange<'_>> = Vec::new();
     for part in raw.split(',') {

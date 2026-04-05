@@ -99,9 +99,7 @@ pub struct SummarizeBenchmark {
     pub prompt_tokens: usize,
     /// Total predicted tokens including the first token from prefill.
     pub generated_tokens: usize,
-    ///
     pub generated_text_size: usize,
-    ///
     pub output_text_size: usize,
     /// Tokens after the first prefill step (decode loop only).
     pub decode_phase_tokens: usize,
@@ -346,6 +344,7 @@ fn html_to_plain(html: &str) -> String {
 }
 
 /// Post-process html2text output: strip reference-link markers, navigation noise, collapse blanks.
+#[allow(clippy::collapsible_if)]
 fn clean_converted_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for line in s.lines() {

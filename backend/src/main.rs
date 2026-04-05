@@ -53,7 +53,7 @@ fn main() {
     let cli = Cli::parse();
     dotenvy::from_filename(".env").expect("failed to parse .env file");
     tracing_subscriber::fmt()
-        .with_writer(|| std::io::stderr())
+        .with_writer(std::io::stderr)
         .init();
 
     match cli.command.unwrap_or(Commands::Serve) {

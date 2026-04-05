@@ -194,7 +194,7 @@ impl IndexManager {
         doc_id: u64,
     ) -> Result<Option<i64>> {
         let query = self.make_tenant_doc_query(tenant_id, doc_id);
-        let hits = searcher.search(&query, &TopDocs::with_limit(1))?;
+        let hits = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
         let (_, doc_address) = match hits.into_iter().next() {
             Some(h) => h,
             None => return Ok(None),
@@ -459,7 +459,7 @@ impl IndexManager {
         let query = BooleanQuery::new(clauses);
 
         let total_hits = query.count(&searcher)? as u64;
-        let hits = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        let hits = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
 
         let mut results = Vec::with_capacity(hits.len());
         for (score, doc_address) in hits {
@@ -512,7 +512,7 @@ impl IndexManager {
         let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
         let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
 
-        let hits = searcher.search(&tenant_query, &TopDocs::with_limit(MAX_CATALOG_SCAN))?;
+        let hits = searcher.search(&tenant_query, &TopDocs::with_limit(MAX_CATALOG_SCAN).order_by_score())?;
 
         let mut unique_paths: HashSet<String> = HashSet::new();
         for (_, doc_address) in hits {
@@ -560,7 +560,7 @@ impl IndexManager {
             (Occur::Must, Box::new(path_query)),
         ]);
 
-        let file_hits = searcher.search(&dir_query, &TopDocs::with_limit(MAX_CATALOG_FILES))?;
+        let file_hits = searcher.search(&dir_query, &TopDocs::with_limit(MAX_CATALOG_FILES).order_by_score())?;
         let mut files: Vec<(u64, String)> = Vec::new();
         for (_, doc_address) in file_hits {
             let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
@@ -583,7 +583,7 @@ impl IndexManager {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
         let query = self.make_tenant_doc_query(tenant_id, doc_id);
-        let hits = searcher.search(&query, &TopDocs::with_limit(1))?;
+        let hits = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
         let (_, doc_address) = match hits.into_iter().next() {
             Some(h) => h,
             None => return Ok(None),
