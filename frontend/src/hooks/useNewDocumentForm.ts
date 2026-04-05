@@ -4,7 +4,6 @@ import { indexDocument, indexDocumentUpload } from "../api";
 import { useI18n } from "../i18n/context";
 import { ensureUtf8File } from "../lib/encoding";
 import { htmlToMarkdown, isHtmlFile, readFileAsText } from "../lib/htmlToMarkdown";
-import { extractErrorMessage } from "../lib/errors";
 import type { DocumentDetailResponse, DocumentIn, IndexResponse } from "../types";
 
 export type IndexSuccessContext = {
@@ -171,8 +170,7 @@ export function useNewDocumentForm(
         return;
       }
       onSuccessRef.current(res, updateId != null ? { updatedDocId: updateId } : {});
-    } catch (err) {
-      setFormError(extractErrorMessage(err, t("errors.indexFailed")));
+    } catch {
     } finally {
       setLoading(false);
     }

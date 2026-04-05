@@ -3,7 +3,6 @@ import { useState } from "react";
 import { search } from "../api";
 import { DEFAULT_SEARCH_LIMIT, type BrandHeaderSearchProps } from "../components/BrandHeader";
 import { useI18n } from "../i18n/context";
-import { extractErrorMessage } from "../lib/errors";
 import type { SearchQuery, SearchResponse } from "../types";
 
 export function useSearch(catalogPath: string) {
@@ -64,8 +63,7 @@ export function useSearch(catalogPath: string) {
       const res = await search(query);
       setResults(res);
       setResultsOpen(true);
-    } catch (err) {
-      setError(extractErrorMessage(err, t("errors.searchFailed")));
+    } catch {
     } finally {
       setLoading(false);
     }

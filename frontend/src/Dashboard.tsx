@@ -17,7 +17,7 @@ export default function Dashboard() {
   const [actionStatus, setActionStatus] = useState("");
   const [indexModalOpen, setIndexModalOpen] = useState(false);
 
-  const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(catalogUrlPath);
+  const { catalog, catalogLoading, reloadCatalog } = useCatalog(catalogUrlPath);
   const searchState = useSearch(catalogUrlPath);
 
   const newDocForm = useNewDocumentForm((res, ctx) => {
@@ -65,7 +65,6 @@ export default function Dashboard() {
         }
         catalog={catalog}
         catalogLoading={catalogLoading}
-        catalogErr={catalogErr}
         onCatalogPathChange={setCatalogPath}
         onNewDocument={openNewDocumentModal}
       >

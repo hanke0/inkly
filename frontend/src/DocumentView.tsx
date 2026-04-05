@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { deleteDocument, fetchDocument } from "./api";
@@ -10,8 +10,7 @@ import { useCatalog } from "./hooks/useCatalog";
 import { useNewDocumentForm } from "./hooks/useNewDocumentForm";
 import { useSearch } from "./hooks/useSearch";
 import { useI18n } from "./i18n/context";
-import { firstLineProbe, looksLikeHtml } from "./lib/documentContent";
-import { extractErrorMessage } from "./lib/errors";
+import { firstLineProbe, looksLikeHtml, renderMarkdownSnippetToSafeHtml } from "./lib/documentContent";
 import type { DocumentDetailResponse } from "./types";
 
 export default function DocumentView() {
@@ -23,7 +22,7 @@ export default function DocumentView() {
   const returnPath = searchParams.get("path")?.trim() || "/";
   const docId = docIdParam ? Number.parseInt(docIdParam, 10) : NaN;
 
-  const { catalog, catalogLoading, catalogErr, reloadCatalog } = useCatalog(returnPath);
+  const { catalog, catalogLoading, reloadCatalog } = useCatalog(returnPath);
   const searchState = useSearch(returnPath);
 
   const [indexModalOpen, setIndexModalOpen] = useState(false);
@@ -33,9 +32,7 @@ export default function DocumentView() {
     if (ctx.updatedDocId != null && ctx.updatedDocId === docId) {
       void fetchDocument(docId)
         .then((d) => setDoc(d))
-        .catch((err) =>
-          setError(extractErrorMessage(err, t("doc.refreshFailed"))),
-        );
+        .catch(() => {});
     }
   });
 
@@ -61,11 +58,7 @@ export default function DocumentView() {
           setDoc(d);
         }
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(extractErrorMessage(err, t("doc.loadFailed")));
-        }
-      })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
@@ -108,12 +101,19 @@ export default function DocumentView() {
       await deleteDocument(doc.doc_id);
       void reloadCatalog();
       navigate({ pathname: "/", search: `?path=${encodeURIComponent(returnPath)}` });
-    } catch (err) {
-      setError(extractErrorMessage(err, t("doc.deleteFailed")));
+    } catch {
     }
   }
 
   const htmlReading = doc != null && looksLikeHtml(firstLineProbe(doc.content));
+
+  const openMetaHtml = useMemo(() => {
+    if (openPanel == null || !doc) {
+      return "";
+    }
+    const raw = openPanel === "summary" ? doc.summary : doc.note;
+    return renderMarkdownSnippetToSafeHtml(raw);
+  }, [openPanel, doc]);
 
   return (
     <>
@@ -128,7 +128,6 @@ export default function DocumentView() {
         }
         catalog={catalog}
         catalogLoading={catalogLoading}
-        catalogErr={catalogErr}
         onCatalogPathChange={onCatalogPathChange}
         onNewDocument={openNewDocumentModal}
         mainClassName="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-inkly-paper"
@@ -259,9 +258,10 @@ export default function DocumentView() {
                         >
                           {openPanel === "summary" ? t("doc.metaSummary") : t("doc.metaNote")}
                         </p>
-                        <div className="inkly-reading__meta">
-                          {openPanel === "summary" ? doc.summary : doc.note}
-                        </div>
+                        <div
+                          className="inkly-reading__body--rich font-inkly-read text-[0.9375rem] leading-relaxed text-inkly-ink-soft"
+                          dangerouslySetInnerHTML={{ __html: openMetaHtml }}
+                        />
                       </div>
                     </>
                   ) : null}

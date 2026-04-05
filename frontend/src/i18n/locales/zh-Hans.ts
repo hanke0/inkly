@@ -4,7 +4,6 @@ export const messages: Record<MessageKey, string> = {
   "auth.checkingSignIn": "正在检查登录状态…",
   "auth.enterUsername": "请输入用户名。",
   "auth.invalidCreds": "用户名或密码错误。",
-  "auth.networkError": "无法连接服务器。",
   "auth.password": "密码",
   "auth.signIn": "登录",
   "auth.signingIn": "正在登录…",
@@ -35,13 +34,8 @@ export const messages: Record<MessageKey, string> = {
   "doc.loading": "加载中…",
   "doc.metaNote": "笔记",
   "doc.metaSummary": "摘要",
-  "doc.refreshFailed": "刷新文档失败。",
-  "doc.loadFailed": "加载文档失败。",
-  "doc.deleteFailed": "删除失败。",
-
-  "errors.catalogFailed": "目录请求失败。",
-  "errors.indexFailed": "索引请求失败。",
-  "errors.searchFailed": "搜索请求失败。",
+  "errors.apiErrorTitle": "请求出错",
+  "errors.fetchFailed": "无法连接服务器。",
 
   "form.addContentOrUpload": "请在文本框中填写内容，或上传文本 / HTML 文件。",
   "form.convertHtmlFailed": "将 HTML 转为 Markdown 失败。",

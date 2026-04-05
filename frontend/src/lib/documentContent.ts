@@ -224,3 +224,14 @@ export function buildDocumentBodyRender(content: string): DocumentBodyRender {
   }
   return { kind: "html", srcdoc: buildIframeSrcdocNoJs(content) };
 }
+
+/**
+ * Short Markdown fields (summary, note): GFM + KaTeX, then DOMPurify.
+ * Not for full HTML documents (no `looksLikeHtml` branch).
+ */
+export function renderMarkdownSnippetToSafeHtml(src: string): string {
+  if (src.replace(/^\uFEFF/, "").trim() === "") {
+    return "";
+  }
+  return sanitizeHtml(markdownToHtml(src));
+}

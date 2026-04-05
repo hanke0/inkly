@@ -9,7 +9,6 @@ type SidebarLayoutProps = {
   sidebarHeaderExtra?: ReactNode;
   catalog: CatalogResponse | null;
   catalogLoading: boolean;
-  catalogErr: string;
   onCatalogPathChange: (path: string) => void;
   onNewDocument: () => void;
   mainClassName?: string;
@@ -21,7 +20,6 @@ export function SidebarLayout({
   sidebarHeaderExtra,
   catalog,
   catalogLoading,
-  catalogErr,
   onCatalogPathChange,
   onNewDocument,
   mainClassName,
@@ -38,7 +36,6 @@ export function SidebarLayout({
           <CatalogSidebar
             catalog={catalog}
             catalogLoading={catalogLoading}
-            catalogErr={catalogErr}
             onPathChange={onCatalogPathChange}
             onNewDocument={onNewDocument}
           />

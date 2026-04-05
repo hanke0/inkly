@@ -18,7 +18,7 @@ export default function RequireAuth() {
     let cancelled = false;
     void (async () => {
       try {
-        const session = await fetchSession();
+        const session = await fetchSession({ quiet: true });
         if (!cancelled) {
           setLocale(normalizeApiLocale(session.locale));
           setReady(true);

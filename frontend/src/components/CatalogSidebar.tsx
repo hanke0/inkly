@@ -25,7 +25,6 @@ function pathBreadcrumbs(
 type CatalogSidebarProps = {
   catalog: CatalogResponse | null;
   catalogLoading: boolean;
-  catalogErr: string;
   onPathChange: (path: string) => void;
   /** Opens the new-document flow (e.g. modal). */
   onNewDocument?: () => void;
@@ -34,7 +33,6 @@ type CatalogSidebarProps = {
 export function CatalogSidebar({
   catalog,
   catalogLoading,
-  catalogErr,
   onPathChange,
   onNewDocument,
 }: CatalogSidebarProps) {
@@ -83,12 +81,6 @@ export function CatalogSidebar({
           </button>
         ) : null}
       </div>
-
-      {catalogErr ? (
-        <div className="mt-2 rounded-md border border-red-200/90 bg-red-50/95 px-2 py-1.5 text-[11px] leading-snug text-red-800">
-          {catalogErr}
-        </div>
-      ) : null}
 
       {catalog ? (
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
@@ -167,7 +159,7 @@ export function CatalogSidebar({
             )}
           </ul>
         </div>
-      ) : !catalogLoading && !catalogErr ? (
+      ) : !catalogLoading ? (
         <p className="mt-2 text-[11px] text-inkly-faint">{t("catalog.empty")}</p>
       ) : null}
     </div>

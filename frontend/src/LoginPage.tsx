@@ -27,7 +27,7 @@ export default function LoginPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const session = await fetchSession();
+        const session = await fetchSession({ quiet: true });
         if (!cancelled) {
           setLocale(normalizeApiLocale(session.locale));
           navigate("/", { replace: true });
@@ -63,7 +63,6 @@ export default function LoginPage() {
       storeCredentials(username, password);
       navigate("/", { replace: true });
     } catch {
-      setError(t("auth.networkError"));
     } finally {
       setLoading(false);
     }

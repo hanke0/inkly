@@ -2,7 +2,6 @@ export const messages = {
   "auth.checkingSignIn": "Checking sign-in…",
   "auth.enterUsername": "Enter a username.",
   "auth.invalidCreds": "Invalid username or password.",
-  "auth.networkError": "Could not reach the server.",
   "auth.password": "Password",
   "auth.signIn": "Sign in",
   "auth.signingIn": "Signing in…",
@@ -33,13 +32,8 @@ export const messages = {
   "doc.loading": "Loading…",
   "doc.metaNote": "Note",
   "doc.metaSummary": "Summary",
-  "doc.refreshFailed": "Failed to refresh document.",
-  "doc.loadFailed": "Failed to load document.",
-  "doc.deleteFailed": "Delete failed.",
-
-  "errors.catalogFailed": "Catalog request failed.",
-  "errors.indexFailed": "Index request failed.",
-  "errors.searchFailed": "Search request failed.",
+  "errors.apiErrorTitle": "Request error",
+  "errors.fetchFailed": "Could not reach the server.",
 
   "form.addContentOrUpload": "Add content in the text area or upload a text / HTML file.",
   "form.convertHtmlFailed": "Failed to convert HTML to Markdown.",

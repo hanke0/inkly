@@ -26,7 +26,6 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-inkly-ink/50 px-3 py-6 backdrop-blur-[2px] sm:py-8"
       role="presentation"
-      onClick={onClose}
     >
       <div
         role="dialog"
@@ -37,7 +36,6 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
             ? "flex h-[calc(100vh-4rem)] max-w-4xl flex-col"
             : "max-w-2xl"
         }`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-inkly-line px-4 py-3 sm:px-5">
           <h2 id={titleId} className="font-inkly-read-ui text-base font-semibold text-inkly-ink">

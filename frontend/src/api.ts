@@ -8,6 +8,8 @@ import type {
   SearchResponse,
   SessionResponse,
 } from "./types";
+import { announceApiError } from "./lib/apiErrorNotify";
+import { extractErrorMessage } from "./lib/errors";
 
 type ErrorBody = { error?: string };
 
@@ -48,14 +50,36 @@ function applyBasicAuth(headers: Headers): void {
   }
 }
 
-async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
+type ApiFetchOptions = {
+  /** When true, do not open the global error dialog (still throws). */
+  quiet?: boolean;
+};
+
+async function apiFetch<T>(
+  path: string,
+  init: RequestInit,
+  options?: ApiFetchOptions,
+): Promise<T> {
   const headers = new Headers(init.headers);
   applyBasicAuth(headers);
   if (preferredAcceptLanguage) {
     headers.set("Accept-Language", preferredAcceptLanguage);
   }
 
-  const res = await fetch(path, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, headers });
+  } catch (e) {
+    if (!options?.quiet) {
+      const text = extractErrorMessage(e, "").trim();
+      announceApiError(
+        text !== ""
+          ? { source: "text", text }
+          : { source: "i18n", key: "errors.fetchFailed" },
+      );
+    }
+    throw e;
+  }
 
   if (res.status === 204) {
     return undefined as T;
@@ -71,7 +95,11 @@ async function apiFetch<T>(path: string, init: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const err = (body as ErrorBody | null)?.error;
-    throw new Error(err ?? `Request failed: ${res.status}`);
+    const message = err ?? `Request failed: ${res.status}`;
+    if (!options?.quiet) {
+      announceApiError({ source: "text", text: message });
+    }
+    throw new Error(message);
   }
 
   return body as T;
@@ -134,8 +162,12 @@ export async function deleteDocument(docId: number): Promise<void> {
   return apiFetch<void>(`/v1/documents/${docId}`, { method: "DELETE" });
 }
 
-export async function fetchSession(): Promise<SessionResponse> {
-  return apiFetch<SessionResponse>("/v1/session", { method: "GET" });
+export async function fetchSession(options?: { quiet?: boolean }): Promise<SessionResponse> {
+  return apiFetch<SessionResponse>(
+    "/v1/session",
+    { method: "GET" },
+    options?.quiet ? { quiet: true } : undefined,
+  );
 }
 
 export function hasStoredCredentials(): boolean {
@@ -165,8 +197,16 @@ export async function verifyLogin(username: string, password: string): Promise<b
   if (preferredAcceptLanguage) {
     headers.set("Accept-Language", preferredAcceptLanguage);
   }
-  const res = await fetch("/v1/session", { method: "GET", headers });
-  return res.ok;
+  try {
+    const res = await fetch("/v1/session", { method: "GET", headers });
+    return res.ok;
+  } catch (e) {
+    const text = extractErrorMessage(e, "").trim();
+    announceApiError(
+      text !== "" ? { source: "text", text } : { source: "i18n", key: "errors.fetchFailed" },
+    );
+    throw e;
+  }
 }
 
 export { LS_PASSWORD_KEY, LS_USERNAME_KEY };
