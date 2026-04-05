@@ -14,8 +14,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use tantivy::collector::DocSetCollector;
 use tantivy::query::AllQuery;
@@ -95,7 +95,10 @@ impl SourceDocFields {
     }
 
     /// `Ok(None)` skips rows with an empty `tenant_id`.
-    fn to_migration_tuple(&self, doc: &TantivyDocument) -> Result<Option<(String, DocumentRow, i64, i64)>> {
+    fn to_migration_tuple(
+        &self,
+        doc: &TantivyDocument,
+    ) -> Result<Option<(String, DocumentRow, i64, i64)>> {
         let tenant_id = get_str(doc, self.tenant_id);
         if tenant_id.trim().is_empty() {
             return Ok(None);
@@ -209,7 +212,8 @@ pub fn migrate_storage_to_current(
 
     let parent = documents_root.parent().ok_or_else(|| {
         SearchError::InvalidInput(
-            "documents_root must have a parent directory (cannot migrate a filesystem root path)".into(),
+            "documents_root must have a parent directory (cannot migrate a filesystem root path)"
+                .into(),
         )
     })?;
 
@@ -280,8 +284,10 @@ pub fn migrate_storage_to_current(
             let fields = SourceDocFields::resolve(&source_index.schema())?;
             let reader = source_index.reader()?;
             let searcher = reader.searcher();
-            let mut addresses: Vec<tantivy::DocAddress> =
-                searcher.search(&AllQuery, &DocSetCollector)?.into_iter().collect();
+            let mut addresses: Vec<tantivy::DocAddress> = searcher
+                .search(&AllQuery, &DocSetCollector)?
+                .into_iter()
+                .collect();
             addresses.sort();
 
             let row_stream = addresses.into_iter().filter_map(|addr| {
@@ -301,10 +307,7 @@ pub fn migrate_storage_to_current(
             mgr.index_rows_with_timestamps_stream(std::iter::empty())?
         };
 
-        Ok((
-            tenant_count,
-            stats.indexed as usize,
-        ))
+        Ok((tenant_count, stats.indexed as usize))
     })();
 
     let (tenant_count, documents_migrated) = match build_result {

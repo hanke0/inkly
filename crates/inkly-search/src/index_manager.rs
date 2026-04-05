@@ -463,12 +463,7 @@ impl IndexManager {
 
         for (doc, created_at, updated_at) in pairs {
             writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
-            writer.add_document(self.build_tantivy_doc(
-                tenant_id,
-                &doc,
-                created_at,
-                updated_at,
-            ))?;
+            writer.add_document(self.build_tantivy_doc(tenant_id, &doc, created_at, updated_at))?;
             indexed += 1;
         }
 
@@ -499,12 +494,8 @@ impl IndexManager {
             }
             tenants.insert(tenant_id.clone());
             writer.delete_query(Box::new(self.make_tenant_doc_query(&tenant_id, doc.doc_id)))?;
-            writer.add_document(self.build_tantivy_doc(
-                &tenant_id,
-                &doc,
-                created_at,
-                updated_at,
-            ))?;
+            writer
+                .add_document(self.build_tantivy_doc(&tenant_id, &doc, created_at, updated_at))?;
             indexed += 1;
         }
 

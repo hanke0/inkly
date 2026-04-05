@@ -7,5 +7,5 @@ pub use error::SearchError;
 pub use index_manager::{
     CatalogListing, DocumentRow, IndexManager, IndexStats, SearchResultItem, StoredDocument,
 };
-pub use migrate::{migrate_storage_to_current, MigrateReport, MIGRATE_FROM_DATA_VERSION};
+pub use migrate::{MIGRATE_FROM_DATA_VERSION, MigrateReport, migrate_storage_to_current};
 pub use storage_meta::STORAGE_DATA_VERSION;
