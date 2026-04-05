@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use tantivy::collector::TopDocs;
 use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, RegexQuery, TermQuery};
 use tantivy::schema::{
-    FAST, Field, INDEXED, IndexRecordOption, STORED, STRING, TEXT, TextFieldIndexing, TextOptions,
-    Value,
+    FAST, Field, FieldType, INDEXED, IndexRecordOption, STORED, STRING, TextFieldIndexing,
+    TextOptions, Value,
 };
 use tantivy::{Index, Term, doc, schema};
 
@@ -103,6 +103,49 @@ fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
 // ---------------------------------------------------------------------------
 // Schema / field helpers
 // ---------------------------------------------------------------------------
+
+/// Registered name for [`tantivy_jieba::JiebaTokenizer`] (Chinese + mixed text).
+const JIEBA_TOKENIZER: &str = "jieba";
+
+fn register_jieba_tokenizer(index: &Index) {
+    index
+        .tokenizers()
+        .register(JIEBA_TOKENIZER, tantivy_jieba::JiebaTokenizer::new());
+}
+
+fn jieba_text_options_stored() -> TextOptions {
+    TextOptions::default()
+        .set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer(JIEBA_TOKENIZER)
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        )
+        .set_stored()
+}
+
+fn field_uses_jieba_tokenizer(entry: &schema::FieldEntry) -> bool {
+    match entry.field_type() {
+        FieldType::Str(opt) => opt
+            .get_indexing_options()
+            .is_some_and(|idx| idx.tokenizer() == JIEBA_TOKENIZER),
+        _ => false,
+    }
+}
+
+fn ensure_jieba_text_schema(schema: &schema::Schema) -> Result<()> {
+    for name in ["title", "content", "summary", "note"] {
+        let field = schema.get_field(name).map_err(|_| {
+            SearchError::InvalidInput(format!("missing {name} field in Tantivy schema"))
+        })?;
+        let entry = schema.get_field_entry(field);
+        if !field_uses_jieba_tokenizer(entry) {
+            return Err(SearchError::InvalidInput(format!(
+                "Tantivy index schema is outdated: field {name} must use the {JIEBA_TOKENIZER} tokenizer for Chinese search. Delete the index directory (DATA_DIR/index) and restart to reindex."
+            )));
+        }
+    }
+    Ok(())
+}
 
 macro_rules! require_field {
     ($schema:expr, $name:literal) => {
@@ -221,6 +264,8 @@ impl IndexManager {
             Index::create_in_dir(&index_dir, schema)?
         };
 
+        register_jieba_tokenizer(&index);
+
         let schema = index.schema();
         let tenant_id_field = require_field!(schema, "tenant_id");
         let doc_id_field = require_field!(schema, "doc_id");
@@ -245,6 +290,8 @@ impl IndexManager {
             ));
         }
         let note_field = require_field!(schema, "note");
+
+        ensure_jieba_text_schema(&schema)?;
 
         Ok(Self {
             index,
@@ -289,9 +336,9 @@ impl IndexManager {
         // INDEXED is required for `TermQuery` / `delete_query` on this field (FAST alone is not enough).
         let _doc_id = builder.add_u64_field("doc_id", INDEXED | FAST | STORED);
         let _doc_url = builder.add_text_field("doc_url", STRING | STORED);
-        let _title = builder.add_text_field("title", TEXT | STORED);
-        let _content = builder.add_text_field("content", TEXT | STORED);
-        let _summary = builder.add_text_field("summary", TEXT | STORED);
+        let _title = builder.add_text_field("title", jieba_text_options_stored());
+        let _content = builder.add_text_field("content", jieba_text_options_stored());
+        let _summary = builder.add_text_field("summary", jieba_text_options_stored());
         let _created_timestamp = builder.add_i64_field("created_timestamp", STORED);
         let _update_timestamp = builder.add_i64_field("update_timestamp", STORED);
         let _tags = builder.add_text_field("tags", STRING | STORED);
@@ -304,7 +351,7 @@ impl IndexManager {
             )
             .set_stored();
         let _path = builder.add_text_field("path", path_opts);
-        let _note = builder.add_text_field("note", TEXT | STORED);
+        let _note = builder.add_text_field("note", jieba_text_options_stored());
 
         builder.build()
     }
@@ -400,6 +447,79 @@ impl IndexManager {
         })
     }
 
+    /// Like [`index_documents`](Self::index_documents) but keeps the given Unix timestamps (storage migration / reindex).
+    pub fn index_documents_with_timestamps(
+        &self,
+        tenant_id: &str,
+        docs: impl IntoIterator<Item = (DocumentRow, i64, i64)>,
+    ) -> Result<IndexStats> {
+        if tenant_id.trim().is_empty() {
+            return Err(SearchError::InvalidInput("tenant_id is empty".into()));
+        }
+
+        let pairs: Vec<(DocumentRow, i64, i64)> = docs.into_iter().collect();
+        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
+        let mut indexed = 0u64;
+
+        for (doc, created_at, updated_at) in pairs {
+            writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
+            writer.add_document(self.build_tantivy_doc(
+                tenant_id,
+                &doc,
+                created_at,
+                updated_at,
+            ))?;
+            indexed += 1;
+        }
+
+        writer.commit()?;
+
+        Ok(IndexStats {
+            indexed,
+            deleted: 0,
+        })
+    }
+
+    /// Streams rows through a **single** writer and **one** `commit` (migration / bulk reindex).
+    ///
+    /// Peak memory stays bounded by the iterator (one [`DocumentRow`] at a time) instead of materializing
+    /// all tenants in memory. Returns [`IndexStats::indexed`] and the count of **distinct** `tenant_id` values written.
+    pub fn index_rows_with_timestamps_stream(
+        &self,
+        rows: impl IntoIterator<Item = Result<(String, DocumentRow, i64, i64)>>,
+    ) -> Result<(IndexStats, usize)> {
+        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
+        let mut indexed = 0u64;
+        let mut tenants = HashSet::new();
+
+        for item in rows {
+            let (tenant_id, doc, created_at, updated_at) = item?;
+            if tenant_id.trim().is_empty() {
+                return Err(SearchError::InvalidInput("tenant_id is empty".into()));
+            }
+            tenants.insert(tenant_id.clone());
+            writer.delete_query(Box::new(self.make_tenant_doc_query(&tenant_id, doc.doc_id)))?;
+            writer.add_document(self.build_tantivy_doc(
+                &tenant_id,
+                &doc,
+                created_at,
+                updated_at,
+            ))?;
+            indexed += 1;
+        }
+
+        writer.commit()?;
+
+        let tenant_count = tenants.len();
+        Ok((
+            IndexStats {
+                indexed,
+                deleted: 0,
+            },
+            tenant_count,
+        ))
+    }
+
     pub fn search(
         &self,
         tenant_id: &str,
@@ -431,7 +551,12 @@ impl IndexManager {
         } else {
             let parser = QueryParser::for_index(
                 &self.index,
-                vec![self.title_field, self.content_field, self.note_field],
+                vec![
+                    self.title_field,
+                    self.content_field,
+                    self.summary_field,
+                    self.note_field,
+                ],
             );
             parser.parse_query(query_str)?
         };
@@ -719,6 +844,70 @@ mod tests {
             .expect("search tags and");
         assert_eq!(hits3.len(), 1);
         assert_eq!(hits3[0].doc_id, 2);
+    }
+
+    #[test]
+    fn search_matches_chinese_text() {
+        let dir = tempdir().expect("tempdir");
+        let im = IndexManager::open_or_create(dir.path()).expect("open");
+        let tenant = "t_search_cn";
+
+        im.index_document(
+            tenant,
+            DocumentRow {
+                doc_id: 1,
+                title: "北京旅游笔记".to_string(),
+                content: "天安门广场与故宫".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec![],
+                path: "/".to_string(),
+                note: String::new(),
+            },
+        )
+        .expect("idx");
+
+        let (n, hits) = im
+            .search(tenant, "北京", 10, None, &[])
+            .expect("search 北京");
+        assert_eq!(n, 1, "jieba should tokenize 北京 in title");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].doc_id, 1);
+
+        let (n2, hits2) = im
+            .search(tenant, "故宫", 10, None, &[])
+            .expect("search 故宫");
+        assert_eq!(n2, 1);
+        assert_eq!(hits2[0].doc_id, 1);
+    }
+
+    #[test]
+    fn search_matches_summary_text() {
+        let dir = tempdir().expect("tempdir");
+        let im = IndexManager::open_or_create(dir.path()).expect("open");
+        let tenant = "t_search_summary";
+
+        im.index_document(
+            tenant,
+            DocumentRow {
+                doc_id: 1,
+                title: "Plain title".to_string(),
+                content: "generic body text".to_string(),
+                summary: "UniqueSummaryToken xyzabc for search".to_string(),
+                doc_url: String::new(),
+                tags: vec![],
+                path: "/".to_string(),
+                note: String::new(),
+            },
+        )
+        .expect("idx");
+
+        let (n, hits) = im
+            .search(tenant, "UniqueSummaryToken", 10, None, &[])
+            .expect("search summary");
+        assert_eq!(n, 1);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].doc_id, 1);
     }
 
     #[test]

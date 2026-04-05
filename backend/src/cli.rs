@@ -25,6 +25,15 @@ pub enum Commands {
     Serve,
     /// Print supported summarizer model ids (same values as `summary-bench --model`).
     Models,
+    /// Upgrade on-disk document search storage to the current `data_version` (stop the server first).
+    ///
+    /// Rebuilds `index/` under the documents root (e.g. Tantivy schema with Chinese tokenization) and
+    /// rewrites `version.data`, preserving `auto_increment` and all indexed documents.
+    Migrate {
+        /// Directory containing `index/` and `version.data` (default: `$DATA_DIR/documents`, same as the server).
+        #[arg(long)]
+        documents_root: Option<PathBuf>,
+    },
     /// Load the summarizer and print token timing (prefill vs decode throughput).
     SummaryBench {
         /// Path to a file whose contents will be used as the article (default: built-in English sample).

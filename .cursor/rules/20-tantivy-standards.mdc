@@ -1,12 +1,11 @@
 ---
 description: Tantivy schema, indexing, and query rules
-globs: "**/*.rs"
+globs: crates/inkly-search/**/*.rs
 alwaysApply: false
 ---
-
 # Schema
 - Stable schema with a single primary id field (`doc_id`) for deterministic updates/deletes.
-- Schema changes must bump `STORAGE_DATA_VERSION` and ship a CLI migration tool (`migrate` subcommand or equivalent).
+- Schema changes must bump `STORAGE_DATA_VERSION` (`crates/inkly-search/src/storage_meta.rs`) and ship a CLI migration path. Current: `inkly migrate` (optional `--documents-root`, default `$DATA_DIR/documents`); migrates `data_version` 2 → current by building a sibling staging directory, then renaming the live tree to `{name}.old.{utc-rfc3339}.backup` (time colons replaced for Windows paths) and promoting the staging tree in place (preserves `auto_increment` and leaves a full backup of the old tree).
 - Use incremental update patterns; avoid full re-index for small changes.
 
 # Persistence

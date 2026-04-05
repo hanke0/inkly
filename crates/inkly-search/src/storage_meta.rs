@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Result, SearchError};
 
 /// Bump when on-disk semantics change; mismatch causes startup failure.
-pub const STORAGE_DATA_VERSION: u32 = 2;
+///
+/// **3** — Tantivy text fields (`title`, `content`, `summary`, `note`) use the `jieba` tokenizer.
+/// **2** — previous schema (default English-oriented tokenizer for those fields).
+pub const STORAGE_DATA_VERSION: u32 = 3;
 
 /// First value returned by `allocate_doc_id` on a fresh store (`auto_increment` in file).
 pub const DEFAULT_AUTO_INCREMENT_NEXT: u64 = 1000;
@@ -96,6 +99,16 @@ pub fn persist_auto_increment(version_path: &Path, data_version: u32, next: u64)
             auto_increment: next,
         },
     )
+}
+
+/// Read `version.data` without enforcing [`STORAGE_DATA_VERSION`] (for offline migration tools).
+pub fn read_version_data(data_root: &Path) -> Result<VersionData> {
+    read_version_file(&version_file_path(data_root))
+}
+
+/// Write `version.data` (used by migration after rebuilding the index).
+pub fn write_version_data(data_root: &Path, data: &VersionData) -> Result<()> {
+    write_version_file(&version_file_path(data_root), data)
 }
 
 #[cfg(test)]

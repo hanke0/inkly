@@ -1,9 +1,8 @@
 ---
 description: Rust + Axum coding and API conventions
-globs: "**/*.rs"
+globs: backend/**/*.rs
 alwaysApply: false
 ---
-
 # Rust
 - Format with `rustfmt`, pass `clippy`.
 - Use `thiserror` for error types; map to HTTP responses in one place.

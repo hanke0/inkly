@@ -1,9 +1,8 @@
 ---
 description: React + Tailwind code conventions
-globs: "**/*.tsx"
+globs: frontend/**
 alwaysApply: false
 ---
-
 # React
 - Functional components + hooks only; keep components small, extract reusable logic into custom hooks.
 - Derive state instead of duplicating it across components.

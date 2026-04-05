@@ -15,7 +15,7 @@ use axum::http::{HeaderValue, Method};
 use axum::middleware;
 use axum::routing::{get, post};
 use clap::Parser;
-use inkly_search::IndexManager;
+use inkly_search::{IndexManager, SearchError};
 use inkly_summarize::{Summarizer, SummarizerConfig};
 use routes::{
     catalog, delete_document, get_document, healthz, index_document, index_document_upload,
@@ -91,6 +91,27 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Commands::Migrate { documents_root } => {
+            let root = documents_root.unwrap_or_else(|| config::data_dir().join("documents"));
+            match inkly_search::migrate_storage_to_current(&root) {
+                Ok(report) => {
+                    println!(
+                        "migrate ok: {} document(s) across {} tenant(s); data_version is now {}",
+                        report.documents_migrated,
+                        report.tenant_count,
+                        inkly_search::STORAGE_DATA_VERSION
+                    );
+                    println!(
+                        "previous data directory: {}",
+                        report.previous_data_backup.display()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("migrate failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 }
 
@@ -105,6 +126,14 @@ async fn run_server() {
 
     let index = match IndexManager::open_or_create(config.data_dir.join("documents")) {
         Ok(i) => i,
+        Err(SearchError::StorageVersionMismatch { expected, found }) => {
+            tracing::error!(
+                expected,
+                found,
+                "startup error: storage data_version mismatch; stop any running instance and run `inkly migrate` (or `inkly migrate --documents-root <path>`)"
+            );
+            return;
+        }
         Err(e) => {
             tracing::error!("startup error: failed to open index: {e}");
             return;
