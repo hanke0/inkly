@@ -1,4 +1,4 @@
-# .github/workflows/release.yml
+# .github/workflows/build.yaml
 
 name: Build
 
@@ -26,6 +26,8 @@ jobs:
 
   build:
     name: Build - ${{ matrix.platform.os-name }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -41,35 +43,66 @@ jobs:
           - os-name: Windows-x86_64
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+            RUSTFLAGS: ''
           - os-name: macOS-aarch64
             runs-on: macOS-latest
             target: aarch64-apple-darwin
+            RUSTFLAGS: ''
 
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Test
-        uses: houseabsolute/actions-rust-cross@v1
-        if: ${{ matrix.platform.target != 'x86_64-unknown-freebsd' }}
+
+      - name: Install musl toolchain (Linux)
+        if: contains(matrix.platform.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          command: test
-          target: ${{ matrix.platform.target }}
-          args: ''
-      - name: Build
-        uses: houseabsolute/actions-rust-cross@v1
+          targets: ${{ matrix.platform.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.platform.target }}
+
+      - name: Test
+        run: cargo test --locked --workspace --target ${{ matrix.platform.target }}
         env:
           RUSTFLAGS: ${{ matrix.platform.RUSTFLAGS }}
-        with:
-          command: build
-          target: ${{ matrix.platform.target }}
-          args: '--locked --release'
-          strip: true
+
+      - name: Build
+        run: cargo build --locked --release -p inkly --target ${{ matrix.platform.target }}
+        env:
+          RUSTFLAGS: ${{ matrix.platform.RUSTFLAGS }}
+
+      - name: Strip release binary
+        if: runner.os != 'Windows'
+        run: strip "target/${{ matrix.platform.target }}/release/inkly"
+
+      - name: Release artifact paths
+        id: art
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="${{ matrix.platform.target }}"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "path=target/$T/release/inkly.exe" >> "$GITHUB_OUTPUT"
+            echo "name=inkly-${{ matrix.platform.os-name }}.exe" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=target/$T/release/inkly" >> "$GITHUB_OUTPUT"
+            echo "name=inkly-${{ matrix.platform.os-name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish artifacts and release
-        if: ${{ github.event_name == 'release' && github.event.action == 'created' }}
-        uses: houseabsolute/actions-rust-release@v0
+        if: github.event_name == 'release' && github.event.action == 'created'
+        uses: svenstaro/upload-release-action@v2
         with:
-          executable-name: rtunnel
-          target: ${{ matrix.platform.target }}
-          changes-file: ''
-          extra-files: ''
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ steps.art.outputs.path }}
+          asset_name: ${{ steps.art.outputs.name }}
+          tag: ${{ github.ref_name }}
+          overwrite: true

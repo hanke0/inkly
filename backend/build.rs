@@ -26,6 +26,10 @@ fn main() {
     );
     println!(
         "cargo:rerun-if-changed={}",
+        frontend_dir.join("package-lock.json").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
         frontend_dir.join("vite.config.ts").display()
     );
     println!(
@@ -48,7 +52,20 @@ fn main() {
         return;
     }
 
-    // Build the frontend during backend compilation, so the backend binary embeds `frontend/dist`.
+    // Install frontend deps from lockfile, then build so the backend binary embeds `frontend/dist`.
+    let ci_status = Command::new("npm")
+        .arg("ci")
+        .current_dir(&frontend_dir)
+        .status()
+        .expect("failed to spawn npm ci");
+
+    if !ci_status.success() {
+        panic!(
+            "npm ci failed (exit code {:?})",
+            ci_status.code().unwrap_or(-1)
+        );
+    }
+
     let status = Command::new("npm")
         .arg("run")
         .arg("build")
