@@ -51,12 +51,22 @@ fn build_cors_layer(config: &config::Config) -> Result<CorsLayer, String> {
 
 fn main() {
     let cli = Cli::parse();
+
+    if matches!(cli.command, Some(Commands::Version)) {
+        cli::run_print_version();
+        return;
+    }
+
     dotenvy::from_filename(".env").expect("failed to parse .env file");
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .init();
 
     match cli.command.unwrap_or(Commands::Serve) {
+        // Defensive: `version` is handled before `.env` load; kept for exhaustiveness.
+        Commands::Version => {
+            cli::run_print_version();
+        }
         Commands::Serve => {
             tokio::runtime::Runtime::new()
                 .expect("tokio runtime")

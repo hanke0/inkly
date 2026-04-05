@@ -19,6 +19,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Print this binary's version (from Cargo package metadata).
+    Version,
     /// Start the HTTP API server (also the default when no subcommand is given).
     Serve,
     /// Print supported summarizer model ids (same values as `summary-bench --model`).
@@ -137,4 +139,8 @@ pub fn run_list_models() {
     for m in Model::ALL {
         println!("{m}");
     }
+}
+
+pub fn run_print_version() {
+    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 }
