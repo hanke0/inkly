@@ -91,9 +91,12 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Migrate { documents_root } => {
+        Commands::Migrate {
+            documents_root,
+            staging_dir,
+        } => {
             let root = documents_root.unwrap_or_else(|| config::data_dir().join("documents"));
-            match inkly_search::migrate_storage_to_current(&root) {
+            match inkly_search::migrate_storage_to_current(&root, staging_dir.as_deref()) {
                 Ok(report) => {
                     println!(
                         "migrate ok: {} document(s) across {} tenant(s); data_version is now {}",

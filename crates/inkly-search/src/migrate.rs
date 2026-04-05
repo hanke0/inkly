@@ -135,14 +135,54 @@ fn migrate_path_timestamp_token() -> Result<String> {
     Ok(rfc.replace(':', "-"))
 }
 
-/// Export from the existing v2 tree (read-only), build a v3 tree in a sibling staging directory, then
+/// True when one path is a strict subdirectory of the other (same path returns false).
+fn paths_strictly_nested(a: &Path, b: &Path) -> bool {
+    fn strict_inside(needle: &Path, haystack: &Path) -> bool {
+        needle
+            .strip_prefix(haystack)
+            .ok()
+            .is_some_and(|rest| !rest.as_os_str().is_empty())
+    }
+    strict_inside(a, b) || strict_inside(b, a)
+}
+
+/// Ensures `staging` exists as a directory and is empty (or creates it if missing).
+fn prepare_staging_dir(staging: &Path) -> Result<()> {
+    if staging.exists() {
+        if !staging.is_dir() {
+            return Err(SearchError::InvalidInput(format!(
+                "staging path exists and is not a directory: {}",
+                staging.display()
+            )));
+        }
+        let mut rd = fs::read_dir(staging).map_err(SearchError::IndexIO)?;
+        if rd.next().is_some() {
+            return Err(SearchError::InvalidInput(format!(
+                "staging directory must be empty: {}",
+                staging.display()
+            )));
+        }
+    }
+    fs::create_dir_all(staging).map_err(SearchError::IndexIO)?;
+    Ok(())
+}
+
+/// Export from the existing v2 tree (read-only), build a v3 tree in a staging directory, then
 /// atomically swap: rename live `documents_root` → `{name}.old.{rfc3339}.backup`, rename staging → `documents_root`.
 ///
 /// `documents_root` is the same path passed to [`IndexManager::open_or_create`] (e.g. `$DATA_DIR/documents`).
 /// Its **parent directory** must exist and must be on the same filesystem as `documents_root` (same-volume `rename`).
 ///
+/// `staging_dir`: if `None`, a sibling directory `{parent}/{basename}.migrate.{rfc3339}` is used. If `Some`, that
+/// exact path is used (created if missing; must be an empty directory if it already exists). It must not equal
+/// `documents_root` or nest inside it (and vice versa). For the final `rename` into `documents_root`, prefer the
+/// same filesystem as the live data (otherwise the OS may return `EXDEV`).
+///
 /// Stop the API server before running (writers must not compete with this tool).
-pub fn migrate_storage_to_current(documents_root: &Path) -> Result<MigrateReport> {
+pub fn migrate_storage_to_current(
+    documents_root: &Path,
+    staging_dir: Option<&Path>,
+) -> Result<MigrateReport> {
     let ver = storage_meta::read_version_data(documents_root)?;
 
     if ver.data_version == storage_meta::STORAGE_DATA_VERSION {
@@ -177,10 +217,29 @@ pub fn migrate_storage_to_current(documents_root: &Path) -> Result<MigrateReport
 
     let ts = migrate_path_timestamp_token()?;
 
-    let staging = parent.join(format!("{base}.migrate.{ts}"));
     let backup = parent.join(format!("{base}.old.{ts}.backup"));
 
-    if staging.exists() {
+    let staging: PathBuf = match staging_dir {
+        Some(s) => {
+            let s = s.to_path_buf();
+            if s == documents_root {
+                return Err(SearchError::InvalidInput(
+                    "staging_dir must not be the same path as documents_root".into(),
+                ));
+            }
+            if paths_strictly_nested(&s, documents_root) {
+                return Err(SearchError::InvalidInput(format!(
+                    "staging_dir must not be inside documents_root (or the reverse): {} <-> {}",
+                    s.display(),
+                    documents_root.display()
+                )));
+            }
+            s
+        }
+        None => parent.join(format!("{base}.migrate.{ts}")),
+    };
+
+    if staging.exists() && staging_dir.is_none() {
         return Err(SearchError::InvalidInput(format!(
             "staging path already exists: {}; retry the migration",
             staging.display()
@@ -193,7 +252,7 @@ pub fn migrate_storage_to_current(documents_root: &Path) -> Result<MigrateReport
         )));
     }
 
-    fs::create_dir_all(&staging)?;
+    prepare_staging_dir(&staging)?;
 
     let build_result = (|| -> Result<(usize, usize)> {
         let index_dir = storage_meta::index_dir(documents_root);
@@ -353,7 +412,7 @@ mod tests {
         w.add_document(d).expect("add");
         w.commit().expect("commit");
 
-        let report = migrate_storage_to_current(root).expect("migrate");
+        let report = migrate_storage_to_current(root, None).expect("migrate");
         assert_eq!(report.documents_migrated, 1);
         assert_eq!(report.tenant_count, 1);
         assert!(
@@ -386,6 +445,65 @@ mod tests {
     }
 
     #[test]
+    fn migrate_with_explicit_staging_dir() {
+        let dir = tempdir().expect("tempdir");
+        let documents = dir.path().join("documents");
+        let staging = dir.path().join("custom_staging");
+        let idx_dir = storage_meta::index_dir(&documents);
+        fs::create_dir_all(&idx_dir).expect("mkdir index");
+
+        storage_meta::write_version_data(
+            &documents,
+            &VersionData {
+                data_version: 2,
+                auto_increment: 500,
+            },
+        )
+        .expect("v2 version");
+
+        let schema = build_schema_v2();
+        let index = Index::create_in_dir(&idx_dir, schema).expect("idx");
+        let t = index.schema().get_field("tenant_id").unwrap();
+        let doc_id = index.schema().get_field("doc_id").unwrap();
+        let doc_url = index.schema().get_field("doc_url").unwrap();
+        let title = index.schema().get_field("title").unwrap();
+        let content = index.schema().get_field("content").unwrap();
+        let summary = index.schema().get_field("summary").unwrap();
+        let created = index.schema().get_field("created_timestamp").unwrap();
+        let updated = index.schema().get_field("update_timestamp").unwrap();
+        let path = index.schema().get_field("path").unwrap();
+        let note = index.schema().get_field("note").unwrap();
+        let tags = index.schema().get_field("tags").unwrap();
+
+        let mut w = index.writer::<TantivyDocument>(50_000_000).expect("writer");
+        let mut d = doc!(
+            t => "t1",
+            doc_id => 1u64,
+            doc_url => "",
+            title => "T",
+            content => "C",
+            summary => "",
+            created => 1i64,
+            updated => 2i64,
+            path => "/",
+            note => ""
+        );
+        d.add_text(tags, "tag");
+        w.add_document(d).expect("add");
+        w.commit().expect("commit");
+
+        assert!(!staging.exists());
+        migrate_storage_to_current(&documents, Some(&staging)).expect("migrate");
+        assert!(
+            !staging.exists(),
+            "staging path should be renamed into documents_root"
+        );
+
+        let im = IndexManager::open_or_create(&documents).expect("open");
+        assert!(im.get_document("t1", 1).expect("get").is_some());
+    }
+
+    #[test]
     fn migrate_idempotent_errors_when_already_current() {
         let dir = tempdir().expect("tempdir");
         let root = dir.path();
@@ -397,7 +515,7 @@ mod tests {
             },
         )
         .expect("write");
-        let err = migrate_storage_to_current(root).unwrap_err();
+        let err = migrate_storage_to_current(root, None).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("nothing to migrate"),

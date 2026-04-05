@@ -33,6 +33,10 @@ pub enum Commands {
         /// Directory containing `index/` and `version.data` (default: `$DATA_DIR/documents`, same as the server).
         #[arg(long)]
         documents_root: Option<PathBuf>,
+        /// Build the new index here before swapping into `documents-root` (default: sibling `basename.migrate.<rfc3339>`).
+        /// Must be empty if it already exists; must not be inside `documents-root` (or vice versa). Prefer the same filesystem as the live data for `rename`.
+        #[arg(long)]
+        staging_dir: Option<PathBuf>,
     },
     /// Load the summarizer and print token timing (prefill vs decode throughput).
     SummaryBench {
