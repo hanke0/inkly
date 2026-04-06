@@ -7,6 +7,7 @@ mod locale;
 mod routes;
 mod state;
 mod static_assets;
+mod summary_queue;
 
 use crate::locale::locale_middleware;
 use axum::Router;
@@ -18,10 +19,11 @@ use clap::Parser;
 use inkly_search::{IndexManager, SearchError};
 use inkly_summarize::{Summarizer, SummarizerConfig};
 use routes::{
-    catalog, delete_document, get_document, healthz, index_document_upload, search, session,
-    update_document,
+    catalog, delete_document, enqueue_document_summary, get_document, healthz,
+    index_document_upload, search, session, update_document,
 };
 use state::AppState;
+use summary_queue::SummaryQueue;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -177,6 +179,23 @@ async fn run_server() {
         None
     };
 
+    let summary_queue = if summarizer.is_some() {
+        let path = config.data_dir.join("summary_queue.db");
+        match SummaryQueue::open(&path) {
+            Ok(q) => Some(std::sync::Arc::new(q)),
+            Err(e) => {
+                tracing::error!(
+                    path = %path.display(),
+                    error = %e,
+                    "startup error: failed to open summary queue database"
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
     let cors_layer = match build_cors_layer(&config) {
         Ok(l) => l,
         Err(e) => {
@@ -185,11 +204,33 @@ async fn run_server() {
         }
     };
 
-    let state = AppState::new(index, summarizer, config.username, config.password);
+    let state = AppState::new(
+        index,
+        summarizer,
+        summary_queue.clone(),
+        config.username,
+        config.password,
+    );
+
+    if let Some(q) = summary_queue {
+        let worker_state = state.clone();
+        if let Err(e) = std::thread::Builder::new()
+            .name("inkly-summary-worker".into())
+            .spawn(move || summary_queue::run_worker_loop(worker_state, q))
+        {
+            tracing::error!(error = %e, "startup error: failed to spawn summary worker thread");
+            return;
+        }
+    }
+
     let auth_layer = axum::middleware::from_fn_with_state(state.clone(), auth::auth_middleware);
 
     let app = Router::new()
         .route("/healthz", get(healthz))
+        .route(
+            "/v1/documents/{doc_id}/summary",
+            post(enqueue_document_summary).layer(auth_layer.clone()),
+        )
         .route(
             "/v1/documents/{doc_id}",
             get(get_document)

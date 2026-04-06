@@ -32,6 +32,10 @@ export const messages = {
   'doc.loading': 'Loading…',
   'doc.metaNote': 'Note',
   'doc.metaSummary': 'Summary',
+  'doc.queueSummary': 'Queue summary',
+  'doc.queueSummaryAria':
+    'Add this document to the server summary queue (or acknowledge if already queued)',
+  'doc.queueSummaryLoading': 'Queuing…',
   'errors.apiErrorTitle': 'Request error',
   'errors.fetchFailed': 'Could not reach the server.',
 

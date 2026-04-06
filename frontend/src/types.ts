@@ -19,6 +19,12 @@ export type IndexResponse = {
   doc_ids?: number[];
 };
 
+/** `POST /v1/documents/{doc_id}/summary` */
+export type SummaryEnqueueResponse = {
+  enqueued: boolean;
+  message: string;
+};
+
 export type SearchQuery = {
   q: string;
   limit: number;

@@ -39,6 +39,13 @@ pub enum Msg {
 
     DocIdPositive,
 
+    /// Summarization is disabled on the server (`SUMMARIZE_ENABLED` not set).
+    SummarizeDisabled,
+    /// Document summary is already scheduled; no need to request again.
+    SummaryAlreadyQueued,
+    /// Document summary has been queued for generation.
+    SummaryQueued,
+
     SearchQueryParseEmpty,
 
     // crate::error
@@ -166,6 +173,27 @@ pub fn t(locale: Locale, msg: Msg) -> &'static str {
             Locale::ZhHans => "文档 ID 必须为正整数。请使用搜索或目录中显示的 ID。",
         },
 
+        Msg::SummarizeDisabled => match locale {
+            Locale::En => {
+                "Automatic summarization is disabled on this server. Ask an administrator to enable `SUMMARIZE_ENABLED` if you need summaries."
+            }
+            Locale::ZhHans => {
+                "此服务器未开启自动摘要。如需摘要，请联系管理员启用 `SUMMARIZE_ENABLED`。"
+            }
+        },
+        Msg::SummaryAlreadyQueued => match locale {
+            Locale::En => {
+                "A summary for this document is already in the processing queue. Please wait; there is no need to request it again."
+            }
+            Locale::ZhHans => "该文档的摘要已在处理队列中，请稍候，无需重复触发。",
+        },
+        Msg::SummaryQueued => match locale {
+            Locale::En => {
+                "Summary generation has been queued. It will appear on the document when processing finishes."
+            }
+            Locale::ZhHans => "已加入摘要生成队列，处理完成后将显示在文档中。",
+        },
+
         Msg::SearchQueryParseEmpty => match locale {
             Locale::En => "Search query could not be parsed. Simplify the query and try again.",
             Locale::ZhHans => "无法解析搜索查询。请简化查询后重试。",
@@ -214,6 +242,9 @@ mod tests {
             Msg::SignInRequired,
             Msg::InternalServer,
             Msg::SearchQueryParseEmpty,
+            Msg::SummarizeDisabled,
+            Msg::SummaryAlreadyQueued,
+            Msg::SummaryQueued,
         ] {
             assert!(!t(Locale::En, msg).is_empty());
             assert!(!t(Locale::ZhHans, msg).is_empty());

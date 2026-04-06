@@ -6,6 +6,7 @@ import type {
   SearchQuery,
   SearchResponse,
   SessionResponse,
+  SummaryEnqueueResponse,
 } from './types';
 import { announceApiError } from './lib/apiErrorNotify';
 import { extractErrorMessage } from './lib/errors';
@@ -123,6 +124,15 @@ export async function updateDocument(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(doc),
+  });
+}
+
+/** Queue async summary generation; `enqueued` is false when the job was already pending. */
+export async function enqueueDocumentSummary(
+  docId: number,
+): Promise<SummaryEnqueueResponse> {
+  return apiFetch<SummaryEnqueueResponse>(`/v1/documents/${docId}/summary`, {
+    method: 'POST',
   });
 }
 

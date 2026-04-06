@@ -27,3 +27,7 @@ inkly-search = { path = "../crates/inkly-search" }
 inkly-summarize = { path = "../crates/inkly-summarize" }
 include_dir = "0.7.4"
 mime_guess = "2.0.5"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3.19.1"

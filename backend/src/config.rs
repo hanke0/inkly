@@ -13,7 +13,7 @@ pub struct Config {
     /// When true, allow any origin (set `CORS_ORIGINS=*`). Otherwise use `cors_origins`.
     pub cors_permissive: bool,
     pub cors_origins: Vec<String>,
-    /// When true, load the local LLM and populate the `summary` field on index routes. Default off.
+    /// When true, load the local LLM and fill `summary` asynchronously via a persistent queue (new uploads and `POST …/summary`). Default off.
     pub summarize_enabled: bool,
     /// Which GGUF preset to load. Default: Qwen3.5 0.8B.
     /// `SUMMARIZE_MODEL`: canonical id (see `inkly_summarize::ModelFamily` `Display`), e.g. `qwen3.5:0.8b`, `deepseek-r1:7b`, `gemma4:26b`, `gemmae2b`, `lfm2.5:1.2b`.

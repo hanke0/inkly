@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-import { deleteDocument, fetchDocument } from './api';
+import { deleteDocument, enqueueDocumentSummary, fetchDocument } from './api';
 import { DocumentBody } from './components/DocumentBody';
 import { NewDocumentModal } from './components/NewDocumentModal';
 import { SearchResultsDialog } from './components/SearchResultsDialog';
@@ -44,6 +44,8 @@ export default function DocumentView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openPanel, setOpenPanel] = useState<'summary' | 'note' | null>(null);
+  const [summaryQueueBusy, setSummaryQueueBusy] = useState(false);
+  const [summaryQueueNotice, setSummaryQueueNotice] = useState('');
 
   useEffect(() => {
     if (!Number.isFinite(docId) || docId < 1) {
@@ -56,6 +58,7 @@ export default function DocumentView() {
     setLoading(true);
     setError('');
     setOpenPanel(null);
+    setSummaryQueueNotice('');
     fetchDocument(docId)
       .then((d) => {
         if (!cancelled) {
@@ -74,6 +77,14 @@ export default function DocumentView() {
     };
   }, [docId]);
 
+  useEffect(() => {
+    if (!summaryQueueNotice) {
+      return;
+    }
+    const id = window.setTimeout(() => setSummaryQueueNotice(''), 12_000);
+    return () => clearTimeout(id);
+  }, [summaryQueueNotice]);
+
   function onCatalogPathChange(p: string) {
     navigate({ pathname: '/', search: `?path=${encodeURIComponent(p)}` });
   }
@@ -89,6 +100,22 @@ export default function DocumentView() {
     }
     newDocForm.prepareEdit(doc);
     setIndexModalOpen(true);
+  }
+
+  async function queueDocumentSummary() {
+    if (!doc) {
+      return;
+    }
+    setSummaryQueueNotice('');
+    setSummaryQueueBusy(true);
+    try {
+      const res = await enqueueDocumentSummary(doc.doc_id);
+      setSummaryQueueNotice(res.message);
+    } catch {
+      /* apiFetch already surfaces errors */
+    } finally {
+      setSummaryQueueBusy(false);
+    }
   }
 
   async function confirmDeleteDocument() {
@@ -149,6 +176,15 @@ export default function DocumentView() {
             </div>
           ) : null}
 
+          {summaryQueueNotice ? (
+            <div
+              className="mb-2 rounded-md border border-sky-200/90 bg-sky-50/95 px-3 py-2 text-sm text-sky-950"
+              role="status"
+            >
+              {summaryQueueNotice}
+            </div>
+          ) : null}
+
           {loading ? (
             <p className="text-sm text-inkly-muted">{t('doc.loading')}</p>
           ) : doc ? (
@@ -163,7 +199,18 @@ export default function DocumentView() {
                 <h1 className="inkly-reading__title min-w-0 shrink-0">
                   {doc.title}
                 </h1>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void queueDocumentSummary()}
+                    disabled={summaryQueueBusy}
+                    aria-label={t('doc.queueSummaryAria')}
+                    className="rounded-md border border-inkly-border/90 bg-white px-2.5 py-1 text-[12px] font-medium text-inkly-ink shadow-sm transition hover:border-inkly-accent/50 hover:bg-inkly-paper-warm/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {summaryQueueBusy
+                      ? t('doc.queueSummaryLoading')
+                      : t('doc.queueSummary')}
+                  </button>
                   <button
                     type="button"
                     onClick={openEditDocumentModal}

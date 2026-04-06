@@ -104,6 +104,15 @@ pub struct CatalogResponse {
     pub files: Vec<CatalogFile>,
 }
 
+/// `POST /v1/documents/{doc_id}/summary` — queue (or acknowledge) async summarization.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SummaryEnqueueResponse {
+    /// `true` if a new job was added; `false` if this document was already in the queue.
+    pub enqueued: bool,
+    /// Localized message for display (from `Accept-Language`).
+    pub message: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentDetailResponse {
     pub doc_id: u64,

@@ -11,10 +11,12 @@ use crate::error::{ApiError, map_index_error, map_search_error};
 use crate::i18n::{Msg, t};
 use crate::locale::Locale;
 use crate::state::AppState;
+use crate::summary_queue::EnqueueOutcome;
 
 use inkly_contract::dto::{
     CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentDetailResponse, DocumentIn,
     IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
+    SummaryEnqueueResponse,
 };
 use inkly_search::{DocumentRow, SearchError, SearchResultItem, StoredDocument};
 use tracing::{info, warn};
@@ -218,6 +220,7 @@ async fn perform_index_document(
 
     let index = state.index.clone();
     let summarizer = state.summarizer.clone();
+    let defer_summary_to_queue = want_auto_id && summarizer.is_some();
 
     let (content, existing_summary) = if want_auto_id {
         let c = input
@@ -250,6 +253,7 @@ async fn perform_index_document(
         note: input.note,
     };
 
+    let tenant_for_index = tenant_id.clone();
     let (stats, assigned_doc_id) = tokio::task::spawn_blocking(move || {
         let doc_id = if want_auto_id {
             index.allocate_doc_id()?
@@ -257,10 +261,13 @@ async fn perform_index_document(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
-        let summary =
-            existing_summary.unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, op));
+        let summary = if defer_summary_to_queue {
+            String::new()
+        } else {
+            existing_summary.unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, op))
+        };
         let stats = index.index_document(
-            &tenant_id,
+            &tenant_for_index,
             DocumentRow {
                 doc_id,
                 summary,
@@ -272,6 +279,43 @@ async fn perform_index_document(
     .await
     .map_err(|_| ApiError::internal(locale))?
     .map_err(|e| map_index_error(e, locale))?;
+
+    if defer_summary_to_queue {
+        if let Some(q) = state.summary_queue.as_ref() {
+            let Some(doc_id) = assigned_doc_id else {
+                warn!(tenant_id = %tenant_id, op, "auto id missing after index; skip summary enqueue");
+                return Ok(Json(IndexResponse {
+                    indexed: stats.indexed,
+                    deleted: stats.deleted,
+                    doc_id: assigned_doc_id,
+                    doc_ids: Vec::new(),
+                }));
+            };
+            match q.enqueue(&tenant_id, doc_id) {
+                Ok(EnqueueOutcome::Enqueued) => {
+                    info!(tenant_id = %tenant_id, doc_id, op, "summary job enqueued");
+                }
+                Ok(EnqueueOutcome::AlreadyQueued) => {
+                    warn!(tenant_id = %tenant_id, doc_id, op, "summary already queued after new doc");
+                }
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        tenant_id = %tenant_id,
+                        doc_id,
+                        op,
+                        "summary enqueue failed; document saved without queued summary"
+                    );
+                }
+            }
+        } else {
+            warn!(
+                tenant_id = %tenant_id,
+                op,
+                "summarizer enabled but summary queue missing; document saved without queued summary"
+            );
+        }
+    }
 
     Ok(Json(IndexResponse {
         indexed: stats.indexed,
@@ -374,6 +418,49 @@ pub async fn update_document(
     input.path = normalize_dir_path(&input.path, locale)?;
     validate_document(&input, locale)?;
     perform_index_document(state, user, input, "update_document", locale).await
+}
+
+/// Queue async regeneration of the document summary (or report that it is already queued).
+///
+/// `POST /v1/documents/{doc_id}/summary`. Requires summarization to be enabled on the server.
+pub async fn enqueue_document_summary(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
+    Path(doc_id): Path<u64>,
+) -> Result<Json<SummaryEnqueueResponse>, ApiError> {
+    if doc_id == 0 {
+        return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
+    }
+
+    let Some(ref queue) = state.summary_queue else {
+        return Err(ApiError::bad_request(t(locale, Msg::SummarizeDisabled)));
+    };
+
+    let tenant_id = user.tenant_id.clone();
+    let index = state.index.clone();
+
+    let exists = tokio::task::spawn_blocking(move || index.get_document(&tenant_id, doc_id))
+        .await
+        .map_err(|_| ApiError::internal(locale))?
+        .map_err(|e| map_index_error(e, locale))?
+        .is_some();
+
+    if !exists {
+        return Err(ApiError::not_found(locale));
+    }
+
+    let outcome = queue.enqueue(&user.tenant_id, doc_id).map_err(|e| {
+        tracing::error!(error = %e, "summary queue enqueue failed");
+        ApiError::internal(locale)
+    })?;
+
+    let (enqueued, message) = match outcome {
+        EnqueueOutcome::Enqueued => (true, t(locale, Msg::SummaryQueued).to_string()),
+        EnqueueOutcome::AlreadyQueued => (false, t(locale, Msg::SummaryAlreadyQueued).to_string()),
+    };
+
+    Ok(Json(SummaryEnqueueResponse { enqueued, message }))
 }
 
 const MAX_SEARCH_TAG_FILTERS: usize = 20;
