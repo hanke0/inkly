@@ -90,6 +90,8 @@ export const messages: Record<MessageKey, string> = {
   'form.uploadOrEditor': '请上传文件，或切换到编辑器撰写内容。',
   'form.uploadSection': '上传文件',
   'form.editorPlaceholder': '开始撰写… 支持 Markdown',
+  'form.openFullscreenEditor': '编辑正文',
+  'form.doneEditing': '完成编辑',
   'form.tagsPlaceholder': '输入后按 Enter',
   'form.urlPlaceholder': 'https://…',
 
@@ -111,6 +113,7 @@ export const messages: Record<MessageKey, string> = {
   'modal.editDoc': '编辑文档',
   'modal.htmlCleanupTitle': '删除 HTML 页面中的部分内容',
   'modal.textUploadEditTitle': '编辑上传的文本',
+  'modal.fullscreenBodyEditorTitle': '编辑正文',
   'modal.newDoc': '新建文档',
 
   'search.close': '关闭',

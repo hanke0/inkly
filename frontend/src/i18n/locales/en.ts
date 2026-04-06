@@ -92,6 +92,8 @@ export const messages = {
     'Upload a file or switch to the editor to write content.',
   'form.uploadSection': 'Upload file',
   'form.editorPlaceholder': 'Start writing… supports Markdown formatting',
+  'form.openFullscreenEditor': 'Edit body',
+  'form.doneEditing': 'Done',
   'form.tagsPlaceholder': 'Type and press Enter',
   'form.urlPlaceholder': 'https://…',
 
@@ -114,6 +116,7 @@ export const messages = {
   'modal.editDoc': 'Edit document',
   'modal.htmlCleanupTitle': 'Remove parts of the HTML page',
   'modal.textUploadEditTitle': 'Edit uploaded text',
+  'modal.fullscreenBodyEditorTitle': 'Edit body',
   'modal.newDoc': 'New document',
 
   'search.close': 'Close',

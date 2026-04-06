@@ -17,6 +17,9 @@ alwaysApply: false
 - Interactive elements must have accessible labels (`aria-label`, `role`, or visible text).
 - Handle loading and error states explicitly for all async operations.
 
+# UI Copy
+- Button labels should describe the action only; avoid implementation/detail qualifiers.
+
 # Security
 - Never render untrusted HTML; avoid `dangerouslySetInnerHTML`.
 - Prefer `httpOnly` cookies for auth tokens; do not store secrets in localStorage/sessionStorage.

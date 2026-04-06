@@ -19,14 +19,15 @@ export function NewDocumentModal({
   const { t } = useI18n();
   const titleId = useId();
   useModalBehavior(open, onClose, undefined, {
-    closeOnEscape: !form.htmlCleanupModalOpen && !form.textUploadEditModalOpen,
+    closeOnEscape:
+      !form.htmlCleanupModalOpen &&
+      !form.textUploadEditModalOpen &&
+      !form.bodyEditorModalOpen,
   });
 
   if (!open) {
     return null;
   }
-
-  const isEditor = !form.isEditing && form.contentMode === 'editor';
 
   return (
     <div
@@ -37,11 +38,7 @@ export function NewDocumentModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`my-auto w-full overflow-hidden rounded-xl border border-inkly-border bg-inkly-paper shadow-xl transition-all ${
-          isEditor
-            ? 'flex h-[calc(100vh-4rem)] max-w-4xl flex-col'
-            : 'max-w-2xl'
-        }`}
+        className="my-auto w-full max-w-2xl overflow-hidden rounded-xl border border-inkly-border bg-inkly-paper shadow-xl transition-all"
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-inkly-line px-4 py-3 sm:px-5">
           <h2
@@ -71,13 +68,7 @@ export function NewDocumentModal({
             </svg>
           </button>
         </div>
-        <div
-          className={`px-4 py-3 sm:px-5 sm:pb-4 ${
-            isEditor
-              ? 'flex min-h-0 flex-1 flex-col'
-              : 'max-h-[36rem] overflow-y-auto'
-          }`}
-        >
+        <div className="max-h-[36rem] overflow-y-auto px-4 py-3 sm:px-5 sm:pb-4">
           <IndexDocumentForm form={form} />
         </div>
       </div>

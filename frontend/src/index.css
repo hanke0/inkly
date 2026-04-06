@@ -250,14 +250,19 @@ body {
     border: 1px solid #c9c2b5;
     background: #fff;
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-    overflow: scroll;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .tiptap-root .tiptap {
     flex: 1;
     padding: 1rem 1.25rem;
     outline: none;
+    overflow-x: hidden;
     overflow-y: auto;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
     min-height: 20rem;
     @apply font-inkly-read text-inkly-ink-soft;
     font-size: 1.0625rem;

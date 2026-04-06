@@ -40,6 +40,7 @@ export function useNewDocumentForm(
   const [htmlUploadLoading, setHtmlUploadLoading] = useState(false);
   const [htmlCleanupModalOpen, setHtmlCleanupModalOpen] = useState(false);
   const [textUploadEditModalOpen, setTextUploadEditModalOpen] = useState(false);
+  const [bodyEditorModalOpen, setBodyEditorModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -79,6 +80,7 @@ export function useNewDocumentForm(
     setHtmlUploadLoading(false);
     setHtmlCleanupModalOpen(false);
     setTextUploadEditModalOpen(false);
+    setBodyEditorModalOpen(false);
     if (contentFileInputRef.current) {
       contentFileInputRef.current.value = '';
     }
@@ -125,6 +127,14 @@ export function useNewDocumentForm(
 
   function closeTextUploadEditModal() {
     setTextUploadEditModalOpen(false);
+  }
+
+  function openBodyEditorModal() {
+    setBodyEditorModalOpen(true);
+  }
+
+  function closeBodyEditorModal() {
+    setBodyEditorModalOpen(false);
   }
 
   async function convertEditedHtmlToMarkdown(
@@ -307,6 +317,9 @@ export function useNewDocumentForm(
     textUploadEditModalOpen,
     openTextUploadEditModal,
     closeTextUploadEditModal,
+    bodyEditorModalOpen,
+    openBodyEditorModal,
+    closeBodyEditorModal,
     convertEditedHtmlToMarkdown,
     convertHtmlFile,
     converting,
