@@ -6,17 +6,20 @@ const turndown = new TurndownService({
   codeBlockStyle: 'fenced',
   bulletListMarker: '-',
   emDelimiter: '*',
+  strongDelimiter: '**',
+  linkStyle: 'inlined',
 });
 turndown.use(gfm);
 
-turndown.addRule('strikethrough', {
-  filter: ['del', 's'],
-  replacement: (content) => `~~${content}~~`,
+// Markdown has no standard syntax for sub/sup; keep as inline HTML.
+turndown.addRule('subscript', {
+  filter: 'sub',
+  replacement: (content) => `<sub>${content}</sub>`,
 });
 
-turndown.addRule('strikethroughLegacy', {
-  filter: (node) => node.nodeName === 'STRIKE',
-  replacement: (content) => `~~${content}~~`,
+turndown.addRule('superscript', {
+  filter: 'sup',
+  replacement: (content) => `<sup>${content}</sup>`,
 });
 
 /**
