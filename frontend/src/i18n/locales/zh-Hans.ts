@@ -35,7 +35,8 @@ export const messages: Record<MessageKey, string> = {
   'doc.metaNote': '笔记',
   'doc.metaSummary': '摘要',
   'doc.queueSummary': '生成摘要',
-  'doc.queueSummaryAria': '将文档加入服务器摘要队列（若已在队列则提示无需重复）',
+  'doc.queueSummaryAria':
+    '将文档加入服务器摘要队列（若已在队列则提示无需重复）',
   'doc.queueSummaryLoading': '提交中…',
   'errors.apiErrorTitle': '请求出错',
   'errors.fetchFailed': '无法连接服务器。',
