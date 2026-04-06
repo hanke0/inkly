@@ -309,7 +309,8 @@ export function removeNonDisplayedBodyElements(doc: Document): number {
     }
 
     const rect = el.getBoundingClientRect();
-    const width = rect.width > 0 ? rect.width : el.clientWidth || el.scrollWidth;
+    const width =
+      rect.width > 0 ? rect.width : el.clientWidth || el.scrollWidth;
     const height =
       rect.height > 0 ? rect.height : el.clientHeight || el.scrollHeight;
     if (width === 0 && height === 0) {
