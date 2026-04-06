@@ -1,8 +1,8 @@
-import type { MessageKey } from "../i18n/locales/en";
+import type { MessageKey } from '../i18n/locales/en';
 
 export type ApiAnnouncedError =
-  | { source: "text"; text: string }
-  | { source: "i18n"; key: MessageKey };
+  | { source: 'text'; text: string }
+  | { source: 'i18n'; key: MessageKey };
 
 type Listener = (detail: ApiAnnouncedError) => void;
 

@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from 'react';
+import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 
-import { clearStoredCredentials, fetchSession, hasStoredCredentials } from "./api";
-import { normalizeApiLocale, useI18n } from "./i18n/context";
+import {
+  clearStoredCredentials,
+  fetchSession,
+  hasStoredCredentials,
+} from './api';
+import { normalizeApiLocale, useI18n } from './i18n/context';
 
 export default function RequireAuth() {
   const navigate = useNavigate();
@@ -26,7 +30,7 @@ export default function RequireAuth() {
       } catch {
         clearStoredCredentials();
         if (!cancelled) {
-          navigate("/login", { replace: true });
+          navigate('/login', { replace: true });
         }
       }
     })();
@@ -43,7 +47,7 @@ export default function RequireAuth() {
   if (!ready) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-inkly-shell text-inkly-muted">
-        <div className="text-sm">{t("auth.checkingSignIn")}</div>
+        <div className="text-sm">{t('auth.checkingSignIn')}</div>
       </div>
     );
   }

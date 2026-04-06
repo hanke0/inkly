@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
-import { useModalBehavior } from "../hooks/useModalBehavior";
-import { useI18n } from "../i18n/context";
-import { setApiErrorListener, type ApiAnnouncedError } from "../lib/apiErrorNotify";
+import { useModalBehavior } from '../hooks/useModalBehavior';
+import { useI18n } from '../i18n/context';
+import {
+  setApiErrorListener,
+  type ApiAnnouncedError,
+} from '../lib/apiErrorNotify';
 
 export function ApiErrorDialog() {
   const { t } = useI18n();
@@ -28,7 +31,11 @@ export function ApiErrorDialog() {
   useModalBehavior(open, onClose, closeRef);
 
   const message =
-    payload?.source === "i18n" ? t(payload.key) : payload?.source === "text" ? payload.text : "";
+    payload?.source === 'i18n'
+      ? t(payload.key)
+      : payload?.source === 'text'
+        ? payload.text
+        : '';
 
   if (!open || !payload) {
     return null;
@@ -53,7 +60,7 @@ export function ApiErrorDialog() {
             type="button"
             className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded text-red-600/90 transition-colors hover:bg-red-200/70 hover:text-red-950"
             onClick={onClose}
-            aria-label={t("modal.closeAria")}
+            aria-label={t('modal.closeAria')}
           >
             <svg
               width="14"
@@ -73,9 +80,11 @@ export function ApiErrorDialog() {
             id={titleId}
             className="pr-8 text-[13px] font-semibold leading-snug text-red-900"
           >
-            {t("errors.apiErrorTitle")}
+            {t('errors.apiErrorTitle')}
           </h2>
-          <p className="mt-1.5 text-[13px] leading-snug text-red-800">{message}</p>
+          <p className="mt-1.5 text-[13px] leading-snug text-red-800">
+            {message}
+          </p>
         </div>
       </div>
     </div>

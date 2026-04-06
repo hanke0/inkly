@@ -1,6 +1,6 @@
-import DOMPurify, { type Config } from "dompurify";
-import katex from "katex";
-import { marked, type TokenizerAndRendererExtension } from "marked";
+import DOMPurify, { type Config } from 'dompurify';
+import katex from 'katex';
+import { marked, type TokenizerAndRendererExtension } from 'marked';
 
 /**
  * KaTeX + marked integration aligned with [docsify-katex](https://github.com/upupming/docsify-katex):
@@ -8,8 +8,8 @@ import { marked, type TokenizerAndRendererExtension } from "marked";
  * `output: "html"` avoids MathML in the DOM so DOMPurify keeps a predictable span-based tree.
  */
 const docsifyStyleKatexExtension: TokenizerAndRendererExtension = {
-  name: "math",
-  level: "inline",
+  name: 'math',
+  level: 'inline',
   start(src: string) {
     return src.match(/\$/)?.index;
   },
@@ -17,36 +17,39 @@ const docsifyStyleKatexExtension: TokenizerAndRendererExtension = {
     const blockMatch = /^\$\$((\\.|[^\$\\])+)\$\$/.exec(src);
     if (blockMatch) {
       return {
-        type: "math",
+        type: 'math',
         raw: blockMatch[0],
         text: blockMatch[1].trim(),
-        mathLevel: "block" as const,
+        mathLevel: 'block' as const,
       };
     }
     const inlineMatch = /^\$((\\.|[^\$\\])+)\$/.exec(src);
     if (inlineMatch) {
       return {
-        type: "math",
+        type: 'math',
         raw: inlineMatch[0],
         text: inlineMatch[1].trim(),
-        mathLevel: "inline" as const,
+        mathLevel: 'inline' as const,
       };
     }
     return undefined;
   },
   renderer(token) {
-    if (token.type !== "math") {
+    if (token.type !== 'math') {
       return false;
     }
     const mathLevel = (token as { mathLevel?: string }).mathLevel;
     const text = (token as { text?: string }).text;
-    if (typeof text !== "string" || (mathLevel !== "block" && mathLevel !== "inline")) {
+    if (
+      typeof text !== 'string' ||
+      (mathLevel !== 'block' && mathLevel !== 'inline')
+    ) {
       return false;
     }
     return katex.renderToString(text, {
       throwOnError: false,
-      displayMode: mathLevel === "block",
-      output: "html",
+      displayMode: mathLevel === 'block',
+      output: 'html',
     });
   },
 };
@@ -103,37 +106,44 @@ function sanitizeHtml(dirty: string): string {
 }
 
 function markdownToHtml(src: string): string {
-  const normalized = src.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const out = marked.parse(normalized, { async: false, gfm: true, breaks: true });
-  if (typeof out !== "string") {
-    return "";
+  const normalized = src
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+  const out = marked.parse(normalized, {
+    async: false,
+    gfm: true,
+    breaks: true,
+  });
+  if (typeof out !== 'string') {
+    return '';
   }
   return out;
 }
 
 export type DocumentBodyRender =
-  | { kind: "markdown"; html: string }
-  | { kind: "html"; srcdoc: string };
+  | { kind: 'markdown'; html: string }
+  | { kind: 'html'; srcdoc: string };
 
-const ATTR_URL_NAMES = ["href", "src", "xlink:href", "formaction"] as const;
+const ATTR_URL_NAMES = ['href', 'src', 'xlink:href', 'formaction'] as const;
 
 function removeAllScripts(root: Document | Element | DocumentFragment) {
-  root.querySelectorAll("script").forEach((el) => el.remove());
+  root.querySelectorAll('script').forEach((el) => el.remove());
 }
 
 function removeScriptsFromDocument(doc: Document) {
   removeAllScripts(doc);
-  doc.querySelectorAll("template").forEach((t) => {
+  doc.querySelectorAll('template').forEach((t) => {
     removeAllScripts(t.content);
   });
 }
 
 function stripEventHandlersAndDangerousUrls(doc: Document) {
-  doc.querySelectorAll("*").forEach((el) => {
+  doc.querySelectorAll('*').forEach((el) => {
     const removeNames: string[] = [];
     for (const a of Array.from(el.attributes)) {
       const lower = a.name.toLowerCase();
-      if (lower.startsWith("on")) {
+      if (lower.startsWith('on')) {
         removeNames.push(a.name);
       }
     }
@@ -145,8 +155,11 @@ function stripEventHandlersAndDangerousUrls(doc: Document) {
       if (!v) {
         continue;
       }
-      const t = v.trim().replace(/[\u0000-\u0020]+/g, "").toLowerCase();
-      if (t.startsWith("javascript:") || t.startsWith("vbscript:")) {
+      const t = v
+        .trim()
+        .replace(/[\u0000-\u0020]+/g, '')
+        .toLowerCase();
+      if (t.startsWith('javascript:') || t.startsWith('vbscript:')) {
         el.removeAttribute(name);
       }
     }
@@ -155,7 +168,7 @@ function stripEventHandlersAndDangerousUrls(doc: Document) {
 
 function extractDoctypeDeclaration(raw: string): string {
   const m = raw.match(/^[\s\r\n]*(<!DOCTYPE[^>]*>)/i);
-  return m ? m[1] : "<!DOCTYPE html>";
+  return m ? m[1] : '<!DOCTYPE html>';
 }
 
 /** Default serif for sandboxed HTML reading pane; author CSS in the doc can override. */
@@ -167,14 +180,14 @@ function ensureIframeReadingBodyFont(doc: Document) {
   if (!head) {
     return;
   }
-  const style = doc.createElement("style");
-  style.setAttribute("data-inkly", "reading-font");
+  const style = doc.createElement('style');
+  style.setAttribute('data-inkly', 'reading-font');
   style.textContent = IFRAME_BODY_SERIF_STYLE;
   head.insertBefore(style, head.firstChild);
 }
 
 function escapeForHtmlText(raw: string): string {
-  return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** When the parser fails, show source as plain text (no script/CSS execution). */
@@ -188,12 +201,12 @@ function fallbackSrcdocPlain(raw: string): string {
  * full document (including &lt;head&gt; styles and &lt;link rel="stylesheet"&gt;) and arbitrary CSS.
  */
 export function buildIframeSrcdocNoJs(raw: string): string {
-  if (typeof document === "undefined") {
+  if (typeof document === 'undefined') {
     return fallbackSrcdocPlain(raw);
   }
 
-  const doc = new DOMParser().parseFromString(raw, "text/html");
-  const parserErr = doc.querySelector("parsererror");
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  const parserErr = doc.querySelector('parsererror');
   if (parserErr) {
     return fallbackSrcdocPlain(raw);
   }
@@ -207,7 +220,9 @@ export function buildIframeSrcdocNoJs(raw: string): string {
     return fallbackSrcdocPlain(raw);
   }
 
-  const doctype = isProbablyFullHtmlDocument(raw) ? extractDoctypeDeclaration(raw) : "<!DOCTYPE html>";
+  const doctype = isProbablyFullHtmlDocument(raw)
+    ? extractDoctypeDeclaration(raw)
+    : '<!DOCTYPE html>';
   return `${doctype}\n${root.outerHTML}`;
 }
 
@@ -216,13 +231,13 @@ export function buildIframeSrcdocNoJs(raw: string): string {
  */
 export function buildDocumentBodyRender(content: string): DocumentBodyRender {
   if (!content) {
-    return { kind: "markdown", html: "" };
+    return { kind: 'markdown', html: '' };
   }
   const probe = firstLineProbe(content);
   if (!looksLikeHtml(probe)) {
-    return { kind: "markdown", html: sanitizeHtml(markdownToHtml(content)) };
+    return { kind: 'markdown', html: sanitizeHtml(markdownToHtml(content)) };
   }
-  return { kind: "html", srcdoc: buildIframeSrcdocNoJs(content) };
+  return { kind: 'html', srcdoc: buildIframeSrcdocNoJs(content) };
 }
 
 /**
@@ -230,8 +245,8 @@ export function buildDocumentBodyRender(content: string): DocumentBodyRender {
  * Not for full HTML documents (no `looksLikeHtml` branch).
  */
 export function renderMarkdownSnippetToSafeHtml(src: string): string {
-  if (src.replace(/^\uFEFF/, "").trim() === "") {
-    return "";
+  if (src.replace(/^\uFEFF/, '').trim() === '') {
+    return '';
   }
   return sanitizeHtml(markdownToHtml(src));
 }

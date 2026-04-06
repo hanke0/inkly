@@ -7,9 +7,9 @@ import type {
   SearchQuery,
   SearchResponse,
   SessionResponse,
-} from "./types";
-import { announceApiError } from "./lib/apiErrorNotify";
-import { extractErrorMessage } from "./lib/errors";
+} from './types';
+import { announceApiError } from './lib/apiErrorNotify';
+import { extractErrorMessage } from './lib/errors';
 
 type ErrorBody = { error?: string };
 
@@ -20,12 +20,12 @@ export function setPreferredAcceptLanguage(value: string | null): void {
   preferredAcceptLanguage = value;
 }
 
-const LS_USERNAME_KEY = "inkly.basic.username";
-const LS_PASSWORD_KEY = "inkly.basic.password";
+const LS_USERNAME_KEY = 'inkly.basic.username';
+const LS_PASSWORD_KEY = 'inkly.basic.password';
 
 function utf8ToBase64(s: string): string {
   const bytes = new TextEncoder().encode(s);
-  let binary = "";
+  let binary = '';
   for (const b of bytes) binary += String.fromCharCode(b);
   return btoa(binary);
 }
@@ -46,7 +46,7 @@ function getBasicAuthHeader(): string | null {
 function applyBasicAuth(headers: Headers): void {
   const auth = getBasicAuthHeader();
   if (auth) {
-    headers.set("Authorization", auth);
+    headers.set('Authorization', auth);
   }
 }
 
@@ -63,7 +63,7 @@ async function apiFetch<T>(
   const headers = new Headers(init.headers);
   applyBasicAuth(headers);
   if (preferredAcceptLanguage) {
-    headers.set("Accept-Language", preferredAcceptLanguage);
+    headers.set('Accept-Language', preferredAcceptLanguage);
   }
 
   let res: Response;
@@ -71,11 +71,11 @@ async function apiFetch<T>(
     res = await fetch(path, { ...init, headers });
   } catch (e) {
     if (!options?.quiet) {
-      const text = extractErrorMessage(e, "").trim();
+      const text = extractErrorMessage(e, '').trim();
       announceApiError(
-        text !== ""
-          ? { source: "text", text }
-          : { source: "i18n", key: "errors.fetchFailed" },
+        text !== ''
+          ? { source: 'text', text }
+          : { source: 'i18n', key: 'errors.fetchFailed' },
       );
     }
     throw e;
@@ -86,8 +86,8 @@ async function apiFetch<T>(
   }
 
   let body: unknown = null;
-  const contentType = res.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
     body = await res.json().catch(() => null);
   } else {
     body = await res.text().catch(() => null);
@@ -97,7 +97,7 @@ async function apiFetch<T>(
     const err = (body as ErrorBody | null)?.error;
     const message = err ?? `Request failed: ${res.status}`;
     if (!options?.quiet) {
-      announceApiError({ source: "text", text: message });
+      announceApiError({ source: 'text', text: message });
     }
     throw new Error(message);
   }
@@ -106,25 +106,29 @@ async function apiFetch<T>(
 }
 
 export async function indexDocument(doc: DocumentIn): Promise<IndexResponse> {
-  return apiFetch<IndexResponse>("/v1/documents", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  return apiFetch<IndexResponse>('/v1/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(doc),
   });
 }
 
 /** Multipart upload: field `file` (UTF-8 text or HTML) plus text fields matching the index form. */
-export async function indexDocumentUpload(formData: FormData): Promise<IndexResponse> {
-  return apiFetch<IndexResponse>("/v1/documents/upload", {
-    method: "POST",
+export async function indexDocumentUpload(
+  formData: FormData,
+): Promise<IndexResponse> {
+  return apiFetch<IndexResponse>('/v1/documents/upload', {
+    method: 'POST',
     body: formData,
   });
 }
 
-export async function indexDocumentsBulk(bulk: BulkIndexIn): Promise<IndexResponse> {
-  return apiFetch<IndexResponse>("/v1/documents/bulk", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+export async function indexDocumentsBulk(
+  bulk: BulkIndexIn,
+): Promise<IndexResponse> {
+  return apiFetch<IndexResponse>('/v1/documents/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bulk),
   });
 }
@@ -134,38 +138,42 @@ export async function search(query: SearchQuery): Promise<SearchResponse> {
     q: query.q,
     limit: String(query.limit),
   });
-  if (query.path != null && query.path !== "" && query.path !== "/") {
-    params.set("path", query.path);
+  if (query.path != null && query.path !== '' && query.path !== '/') {
+    params.set('path', query.path);
   }
-  if (query.tags != null && query.tags.trim() !== "") {
-    params.set("tags", query.tags.trim());
+  if (query.tags != null && query.tags.trim() !== '') {
+    params.set('tags', query.tags.trim());
   }
   return apiFetch<SearchResponse>(`/v1/search?${params.toString()}`, {
-    method: "GET",
+    method: 'GET',
   });
 }
 
 export async function fetchCatalog(path: string): Promise<CatalogResponse> {
-  const params = new URLSearchParams({ path: path || "/" });
+  const params = new URLSearchParams({ path: path || '/' });
   return apiFetch<CatalogResponse>(`/v1/catalog?${params.toString()}`, {
-    method: "GET",
+    method: 'GET',
   });
 }
 
-export async function fetchDocument(docId: number): Promise<DocumentDetailResponse> {
+export async function fetchDocument(
+  docId: number,
+): Promise<DocumentDetailResponse> {
   return apiFetch<DocumentDetailResponse>(`/v1/documents/${docId}`, {
-    method: "GET",
+    method: 'GET',
   });
 }
 
 export async function deleteDocument(docId: number): Promise<void> {
-  return apiFetch<void>(`/v1/documents/${docId}`, { method: "DELETE" });
+  return apiFetch<void>(`/v1/documents/${docId}`, { method: 'DELETE' });
 }
 
-export async function fetchSession(options?: { quiet?: boolean }): Promise<SessionResponse> {
+export async function fetchSession(options?: {
+  quiet?: boolean;
+}): Promise<SessionResponse> {
   return apiFetch<SessionResponse>(
-    "/v1/session",
-    { method: "GET" },
+    '/v1/session',
+    { method: 'GET' },
     options?.quiet ? { quiet: true } : undefined,
   );
 }
@@ -191,19 +199,27 @@ export function clearStoredCredentials(): void {
 }
 
 /** Returns true when the server accepts these Basic credentials (does not persist them). */
-export async function verifyLogin(username: string, password: string): Promise<boolean> {
+export async function verifyLogin(
+  username: string,
+  password: string,
+): Promise<boolean> {
   const headers = new Headers();
-  headers.set("Authorization", `Basic ${utf8ToBase64(`${username.trim()}:${password}`)}`);
+  headers.set(
+    'Authorization',
+    `Basic ${utf8ToBase64(`${username.trim()}:${password}`)}`,
+  );
   if (preferredAcceptLanguage) {
-    headers.set("Accept-Language", preferredAcceptLanguage);
+    headers.set('Accept-Language', preferredAcceptLanguage);
   }
   try {
-    const res = await fetch("/v1/session", { method: "GET", headers });
+    const res = await fetch('/v1/session', { method: 'GET', headers });
     return res.ok;
   } catch (e) {
-    const text = extractErrorMessage(e, "").trim();
+    const text = extractErrorMessage(e, '').trim();
     announceApiError(
-      text !== "" ? { source: "text", text } : { source: "i18n", key: "errors.fetchFailed" },
+      text !== ''
+        ? { source: 'text', text }
+        : { source: 'i18n', key: 'errors.fetchFailed' },
     );
     throw e;
   }

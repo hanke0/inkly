@@ -4,7 +4,6 @@ globs: backend/**/*.rs
 alwaysApply: false
 ---
 # Rust
-- Format with `rustfmt`, pass `clippy`.
 - Use `thiserror` for error types; map to HTTP responses in one place.
 - No `unwrap()` / `expect()`; propagate typed errors with `?`.
 - Keep modules small: handlers, services, domain logic in separate files.

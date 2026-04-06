@@ -1,10 +1,18 @@
-import { useRef, useState } from "react";
+import { useRef, useState } from 'react';
 
-import { indexDocument, indexDocumentUpload } from "../api";
-import { useI18n } from "../i18n/context";
-import { ensureUtf8File } from "../lib/encoding";
-import { htmlToMarkdown, isHtmlFile, readFileAsText } from "../lib/htmlToMarkdown";
-import type { DocumentDetailResponse, DocumentIn, IndexResponse } from "../types";
+import { indexDocument, indexDocumentUpload } from '../api';
+import { useI18n } from '../i18n/context';
+import { ensureUtf8File } from '../lib/encoding';
+import {
+  htmlToMarkdown,
+  isHtmlFile,
+  readFileAsText,
+} from '../lib/htmlToMarkdown';
+import type {
+  DocumentDetailResponse,
+  DocumentIn,
+  IndexResponse,
+} from '../types';
 
 export type IndexSuccessContext = {
   updatedDocId?: number;
@@ -17,38 +25,38 @@ export function useNewDocumentForm(
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
   const [editingDocId, setEditingDocId] = useState<number | null>(null);
-  const [contentMode, setContentMode] = useState<"upload" | "editor">("upload");
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
+  const [contentMode, setContentMode] = useState<'upload' | 'editor'>('upload');
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
   const [contentFile, setContentFile] = useState<File | null>(null);
   const contentFileInputRef = useRef<HTMLInputElement>(null);
-  const [docUrl, setDocUrl] = useState("");
-  const [tagsText, setTagsText] = useState("");
-  const [path, setPath] = useState("");
-  const [note, setNote] = useState("");
+  const [docUrl, setDocUrl] = useState('');
+  const [tagsText, setTagsText] = useState('');
+  const [path, setPath] = useState('');
+  const [note, setNote] = useState('');
 
   const [converting, setConverting] = useState(false);
   const [convertedFromHtml, setConvertedFromHtml] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formError, setFormError] = useState("");
+  const [formError, setFormError] = useState('');
 
   const isEditing = editingDocId !== null;
 
   function clearFileInput() {
     setContentFile(null);
     if (contentFileInputRef.current) {
-      contentFileInputRef.current.value = "";
+      contentFileInputRef.current.value = '';
     }
   }
 
   function switchToEditor() {
     clearFileInput();
-    setContentMode("editor");
+    setContentMode('editor');
   }
 
   function switchToUpload() {
     setConvertedFromHtml(false);
-    setContentMode("upload");
+    setContentMode('upload');
   }
 
   const isHtmlFileSelected = contentFile != null && isHtmlFile(contentFile);
@@ -56,16 +64,16 @@ export function useNewDocumentForm(
   async function convertHtmlFile() {
     if (!contentFile || !isHtmlFile(contentFile)) return;
     setConverting(true);
-    setFormError("");
+    setFormError('');
     try {
       const raw = await readFileAsText(contentFile);
       const md = htmlToMarkdown(raw);
       setContent(md);
       setConvertedFromHtml(true);
       clearFileInput();
-      setContentMode("editor");
+      setContentMode('editor');
     } catch {
-      setFormError(t("form.convertHtmlFailed"));
+      setFormError(t('form.convertHtmlFailed'));
     } finally {
       setConverting(false);
     }
@@ -73,51 +81,51 @@ export function useNewDocumentForm(
 
   /** Call when opening the modal for a new document; optionally scope `path` to the current catalog folder. */
   function prepareOpen(options?: { path?: string }) {
-    setFormError("");
+    setFormError('');
     setEditingDocId(null);
-    setContentMode("upload");
-    setTitle("");
-    setContent("");
+    setContentMode('upload');
+    setTitle('');
+    setContent('');
     clearFileInput();
     setConvertedFromHtml(false);
     setConverting(false);
-    setDocUrl("");
-    setTagsText("");
-    setNote("");
+    setDocUrl('');
+    setTagsText('');
+    setNote('');
     if (options?.path !== undefined) {
       setPath(options.path);
     }
   }
 
   function prepareEdit(d: DocumentDetailResponse) {
-    setFormError("");
+    setFormError('');
     setEditingDocId(d.doc_id);
-    setContentMode("upload");
+    setContentMode('upload');
     setTitle(d.title);
-    setContent("");
+    setContent('');
     clearFileInput();
     setConvertedFromHtml(false);
     setConverting(false);
     setDocUrl(d.doc_url);
-    setTagsText(d.tags.join(", "));
+    setTagsText(d.tags.join(', '));
     setPath(d.path);
     setNote(d.note);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setFormError("");
+    setFormError('');
     setLoading(true);
 
     const tags = tagsText
-      .split(",")
+      .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
 
     const updateId = editingDocId;
 
     if (!title.trim()) {
-      setFormError(t("form.titleRequired"));
+      setFormError(t('form.titleRequired'));
       setLoading(false);
       return;
     }
@@ -136,22 +144,22 @@ export function useNewDocumentForm(
         res = await indexDocument(payload);
       } else if (contentFile) {
         if (contentFile.size === 0) {
-          setFormError(t("form.uploadEmpty"));
+          setFormError(t('form.uploadEmpty'));
           setLoading(false);
           return;
         }
         const utf8File = await ensureUtf8File(contentFile);
         const fd = new FormData();
-        fd.append("file", utf8File);
-        fd.append("title", title.trim());
-        fd.append("doc_url", docUrl.trim());
-        fd.append("path", path.trim());
-        fd.append("note", note);
-        fd.append("tags", tagsText);
+        fd.append('file', utf8File);
+        fd.append('title', title.trim());
+        fd.append('doc_url', docUrl.trim());
+        fd.append('path', path.trim());
+        fd.append('note', note);
+        fd.append('tags', tagsText);
         res = await indexDocumentUpload(fd);
-      } else if (contentMode === "editor") {
+      } else if (contentMode === 'editor') {
         if (!content.trim()) {
-          setFormError(t("form.addContentOrUpload"));
+          setFormError(t('form.addContentOrUpload'));
           setLoading(false);
           return;
         }
@@ -165,11 +173,14 @@ export function useNewDocumentForm(
         };
         res = await indexDocument(payload);
       } else {
-        setFormError(t("form.uploadOrEditor"));
+        setFormError(t('form.uploadOrEditor'));
         setLoading(false);
         return;
       }
-      onSuccessRef.current(res, updateId != null ? { updatedDocId: updateId } : {});
+      onSuccessRef.current(
+        res,
+        updateId != null ? { updatedDocId: updateId } : {},
+      );
     } catch {
     } finally {
       setLoading(false);

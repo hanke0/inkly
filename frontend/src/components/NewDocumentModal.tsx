@@ -1,9 +1,9 @@
-import { useId } from "react";
+import { useId } from 'react';
 
-import { IndexDocumentForm } from "./IndexDocumentForm";
-import { useModalBehavior } from "../hooks/useModalBehavior";
-import { useI18n } from "../i18n/context";
-import type { NewDocumentFormState } from "../hooks/useNewDocumentForm";
+import { IndexDocumentForm } from './IndexDocumentForm';
+import { useModalBehavior } from '../hooks/useModalBehavior';
+import { useI18n } from '../i18n/context';
+import type { NewDocumentFormState } from '../hooks/useNewDocumentForm';
 
 type NewDocumentModalProps = {
   open: boolean;
@@ -11,7 +11,11 @@ type NewDocumentModalProps = {
   form: NewDocumentFormState;
 };
 
-export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps) {
+export function NewDocumentModal({
+  open,
+  onClose,
+  form,
+}: NewDocumentModalProps) {
   const { t } = useI18n();
   const titleId = useId();
   useModalBehavior(open, onClose);
@@ -20,7 +24,7 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
     return null;
   }
 
-  const isEditor = !form.isEditing && form.contentMode === "editor";
+  const isEditor = !form.isEditing && form.contentMode === 'editor';
 
   return (
     <div
@@ -33,19 +37,22 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
         aria-labelledby={titleId}
         className={`my-auto w-full overflow-hidden rounded-xl border border-inkly-border bg-inkly-paper shadow-xl transition-all ${
           isEditor
-            ? "flex h-[calc(100vh-4rem)] max-w-4xl flex-col"
-            : "max-w-2xl"
+            ? 'flex h-[calc(100vh-4rem)] max-w-4xl flex-col'
+            : 'max-w-2xl'
         }`}
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-inkly-line px-4 py-3 sm:px-5">
-          <h2 id={titleId} className="font-inkly-read-ui text-base font-semibold text-inkly-ink">
-            {form.isEditing ? t("modal.editDoc") : t("modal.newDoc")}
+          <h2
+            id={titleId}
+            className="font-inkly-read-ui text-base font-semibold text-inkly-ink"
+          >
+            {form.isEditing ? t('modal.editDoc') : t('modal.newDoc')}
           </h2>
           <button
             type="button"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-inkly-muted transition-colors hover:bg-inkly-border-soft hover:text-inkly-ink"
             onClick={onClose}
-            aria-label={t("modal.closeAria")}
+            aria-label={t('modal.closeAria')}
           >
             <svg
               width="18"
@@ -65,8 +72,8 @@ export function NewDocumentModal({ open, onClose, form }: NewDocumentModalProps)
         <div
           className={`px-4 py-3 sm:px-5 sm:pb-4 ${
             isEditor
-              ? "flex min-h-0 flex-1 flex-col"
-              : "max-h-[36rem] overflow-y-auto"
+              ? 'flex min-h-0 flex-1 flex-col'
+              : 'max-h-[36rem] overflow-y-auto'
           }`}
         >
           <IndexDocumentForm form={form} />

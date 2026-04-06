@@ -7,39 +7,44 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from "react";
+} from 'react';
 
-import { setPreferredAcceptLanguage } from "../api";
-import { interpolate, loadLocaleMessages, type AppLocale, type MessageKey } from "./strings";
+import { setPreferredAcceptLanguage } from '../api';
+import {
+  interpolate,
+  loadLocaleMessages,
+  type AppLocale,
+  type MessageKey,
+} from './strings';
 
 export type { AppLocale, MessageKey };
 
 function localeFromNavigator(): AppLocale {
-  if (typeof navigator === "undefined") {
-    return "en";
+  if (typeof navigator === 'undefined') {
+    return 'en';
   }
   for (const raw of navigator.languages ?? [navigator.language]) {
-    const tag = raw?.trim().toLowerCase() ?? "";
-    if (tag.startsWith("zh")) {
-      return "zh-Hans";
+    const tag = raw?.trim().toLowerCase() ?? '';
+    if (tag.startsWith('zh')) {
+      return 'zh-Hans';
     }
-    if (tag.startsWith("en")) {
-      return "en";
+    if (tag.startsWith('en')) {
+      return 'en';
     }
   }
-  return "en";
+  return 'en';
 }
 
 export function normalizeApiLocale(tag: string): AppLocale {
   const t = tag.trim().toLowerCase();
-  if (t === "zh-hans" || t.startsWith("zh")) {
-    return "zh-Hans";
+  if (t === 'zh-hans' || t.startsWith('zh')) {
+    return 'zh-Hans';
   }
-  return "en";
+  return 'en';
 }
 
 function acceptLanguageHeader(loc: AppLocale): string {
-  return loc === "zh-Hans" ? "zh-CN,zh;q=0.9,en;q=0.8" : "en-US,en;q=0.9";
+  return loc === 'zh-Hans' ? 'zh-CN,zh;q=0.9,en;q=0.8' : 'en-US,en;q=0.9';
 }
 
 type I18nContextValue = {
@@ -52,7 +57,9 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(() => localeFromNavigator());
+  const [locale, setLocaleState] = useState<AppLocale>(() =>
+    localeFromNavigator(),
+  );
   const [bundle, setBundle] = useState<{
     loc: AppLocale;
     messages: Record<MessageKey, string>;
@@ -105,7 +112,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 export function useI18n(): I18nContextValue {
   const ctx = useContext(I18nContext);
   if (!ctx) {
-    throw new Error("useI18n must be used within I18nProvider");
+    throw new Error('useI18n must be used within I18nProvider');
   }
   return ctx;
 }

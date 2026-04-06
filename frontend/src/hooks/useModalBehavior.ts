@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
  * Shared modal behavior: dismiss on Escape, lock body scroll while open,
@@ -20,18 +20,18 @@ export function useModalBehavior(
       return;
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         onCloseRef.current();
       }
     }
-    document.addEventListener("keydown", onKey);
+    document.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = 'hidden';
     if (autoFocusRef?.current) {
       queueMicrotask(() => autoFocusRef.current?.focus());
     }
     return () => {
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
   }, [open, autoFocusRef]);

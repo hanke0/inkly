@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import {
   clearStoredCredentials,
@@ -7,15 +7,15 @@ import {
   hasStoredCredentials,
   storeCredentials,
   verifyLogin,
-} from "./api";
-import { normalizeApiLocale, useI18n } from "./i18n/context";
+} from './api';
+import { normalizeApiLocale, useI18n } from './i18n/context';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { setLocale, t } = useI18n();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(() => hasStoredCredentials());
 
@@ -30,7 +30,7 @@ export default function LoginPage() {
         const session = await fetchSession({ quiet: true });
         if (!cancelled) {
           setLocale(normalizeApiLocale(session.locale));
-          navigate("/", { replace: true });
+          navigate('/', { replace: true });
         }
       } catch {
         clearStoredCredentials();
@@ -47,9 +47,9 @@ export default function LoginPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
+    setError('');
     if (!username.trim()) {
-      setError(t("auth.enterUsername"));
+      setError(t('auth.enterUsername'));
       return;
     }
 
@@ -57,11 +57,11 @@ export default function LoginPage() {
     try {
       const ok = await verifyLogin(username, password);
       if (!ok) {
-        setError(t("auth.invalidCreds"));
+        setError(t('auth.invalidCreds'));
         return;
       }
       storeCredentials(username, password);
-      navigate("/", { replace: true });
+      navigate('/', { replace: true });
     } catch {
     } finally {
       setLoading(false);
@@ -71,7 +71,7 @@ export default function LoginPage() {
   if (checking) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-y-auto bg-inkly-shell text-inkly-muted">
-        <div className="text-sm">{t("auth.checkingSignIn")}</div>
+        <div className="text-sm">{t('auth.checkingSignIn')}</div>
       </div>
     );
   }
@@ -88,7 +88,9 @@ export default function LoginPage() {
               Inkly
             </Link>
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-inkly-muted">{t("auth.tagline")}</p>
+          <p className="mt-2 text-sm leading-relaxed text-inkly-muted">
+            {t('auth.tagline')}
+          </p>
         </div>
 
         <form
@@ -96,10 +98,14 @@ export default function LoginPage() {
           className="rounded-xl border border-inkly-border bg-inkly-paper p-6 shadow-sm"
         >
           {error ? (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              {error}
+            </div>
           ) : null}
 
-          <label className="block text-sm text-inkly-muted">{t("auth.username")}</label>
+          <label className="block text-sm text-inkly-muted">
+            {t('auth.username')}
+          </label>
           <input
             type="text"
             name="username"
@@ -110,7 +116,9 @@ export default function LoginPage() {
             disabled={loading}
           />
 
-          <label className="mt-4 block text-sm text-inkly-muted">{t("auth.password")}</label>
+          <label className="mt-4 block text-sm text-inkly-muted">
+            {t('auth.password')}
+          </label>
           <input
             type="password"
             name="password"
@@ -126,7 +134,7 @@ export default function LoginPage() {
             disabled={loading}
             className="mt-6 w-full rounded-lg bg-inkly-accent py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-inkly-accent-hover disabled:opacity-50"
           >
-            {loading ? t("auth.signingIn") : t("auth.signIn")}
+            {loading ? t('auth.signingIn') : t('auth.signIn')}
           </button>
         </form>
       </div>

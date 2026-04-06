@@ -1,20 +1,22 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from 'react-router-dom';
 
-import { useI18n } from "../i18n/context";
-import { docLink } from "../lib/docLink";
-import type { CatalogResponse } from "../types";
+import { useI18n } from '../i18n/context';
+import { docLink } from '../lib/docLink';
+import type { CatalogResponse } from '../types';
 
 function pathBreadcrumbs(
   normalizedPath: string,
   homeLabel: string,
 ): { label: string; path: string }[] {
-  const out: { label: string; path: string }[] = [{ label: homeLabel, path: "/" }];
-  if (normalizedPath === "/") {
+  const out: { label: string; path: string }[] = [
+    { label: homeLabel, path: '/' },
+  ];
+  if (normalizedPath === '/') {
     return out;
   }
-  const inner = normalizedPath.replace(/^\/+|\/+$/g, "");
-  const parts = inner.split("/").filter(Boolean);
-  let prefix = "";
+  const inner = normalizedPath.replace(/^\/+|\/+$/g, '');
+  const parts = inner.split('/').filter(Boolean);
+  let prefix = '';
   for (const p of parts) {
     prefix = `${prefix}/${p}`;
     out.push({ label: p, path: `${prefix}/` });
@@ -40,7 +42,9 @@ export function CatalogSidebar({
   const params = useParams();
   const activeDocParam = params.docId;
   const activeDocId =
-    activeDocParam !== undefined ? Number.parseInt(activeDocParam, 10) : Number.NaN;
+    activeDocParam !== undefined
+      ? Number.parseInt(activeDocParam, 10)
+      : Number.NaN;
   const hasActiveDoc = Number.isFinite(activeDocId) && activeDocId >= 1;
 
   return (
@@ -50,12 +54,12 @@ export function CatalogSidebar({
         aria-busy={catalogLoading}
       >
         <h2 className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-muted">
-          {t("catalog.library")}
+          {t('catalog.library')}
         </h2>
         {catalogLoading ? (
           <span
             className="h-1.5 w-10 shrink-0 animate-pulse rounded-sm bg-inkly-line/50"
-            title={t("catalog.loadingTitle")}
+            title={t('catalog.loadingTitle')}
           />
         ) : null}
         {onNewDocument ? (
@@ -63,8 +67,8 @@ export function CatalogSidebar({
             type="button"
             onClick={onNewDocument}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-inkly-muted transition-colors hover:bg-white/50 hover:text-inkly-accent"
-            aria-label={t("catalog.addPageAria")}
-            title={t("catalog.addPageTitle")}
+            aria-label={t('catalog.addPageAria')}
+            title={t('catalog.addPageTitle')}
           >
             <svg
               width="11"
@@ -84,33 +88,38 @@ export function CatalogSidebar({
 
       {catalog ? (
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
-          <nav className="text-[11px] leading-snug text-inkly-muted" aria-label={t("catalog.folderNavAria")}>
+          <nav
+            className="text-[11px] leading-snug text-inkly-muted"
+            aria-label={t('catalog.folderNavAria')}
+          >
             <div className="flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
-              {pathBreadcrumbs(catalog.path, t("catalog.home")).map((crumb, i, arr) => (
-                <span key={crumb.path} className="flex items-center gap-0.5">
-                  {i > 0 ? (
-                    <span className="text-inkly-faint/70" aria-hidden>
-                      /
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={
-                      i === arr.length - 1
-                        ? "rounded px-0.5 py-0 text-left font-medium text-inkly-ink"
-                        : "rounded px-0.5 py-0 text-left hover:text-inkly-ink-soft"
-                    }
-                    onClick={() => onPathChange(crumb.path)}
-                  >
-                    {crumb.label}
-                  </button>
-                </span>
-              ))}
+              {pathBreadcrumbs(catalog.path, t('catalog.home')).map(
+                (crumb, i, arr) => (
+                  <span key={crumb.path} className="flex items-center gap-0.5">
+                    {i > 0 ? (
+                      <span className="text-inkly-faint/70" aria-hidden>
+                        /
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={
+                        i === arr.length - 1
+                          ? 'rounded px-0.5 py-0 text-left font-medium text-inkly-ink'
+                          : 'rounded px-0.5 py-0 text-left hover:text-inkly-ink-soft'
+                      }
+                      onClick={() => onPathChange(crumb.path)}
+                    >
+                      {crumb.label}
+                    </button>
+                  </span>
+                ),
+              )}
             </div>
           </nav>
 
           <p className="mb-0.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-faint">
-            {t("catalog.folders")}
+            {t('catalog.folders')}
           </p>
           <ul className="space-y-0.5">
             {catalog.subdirs.length === 0 ? (
@@ -132,11 +141,13 @@ export function CatalogSidebar({
           </ul>
 
           <p className="mb-0.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-inkly-faint">
-            {t("catalog.pages")}
+            {t('catalog.pages')}
           </p>
           <ul className="space-y-0.5">
             {catalog.files.length === 0 ? (
-              <li className="py-1 text-[11px] text-inkly-faint">{t("catalog.none")}</li>
+              <li className="py-1 text-[11px] text-inkly-faint">
+                {t('catalog.none')}
+              </li>
             ) : (
               catalog.files.map((f) => {
                 const active = hasActiveDoc && f.doc_id === activeDocId;
@@ -146,8 +157,8 @@ export function CatalogSidebar({
                       to={docLink(f.doc_id, catalog.path)}
                       className={
                         active
-                          ? "block truncate rounded px-1 py-1 text-xs font-medium text-inkly-ink bg-white/55"
-                          : "block truncate rounded px-1 py-1 text-xs text-inkly-link hover:bg-white/40 hover:text-inkly-link-hover"
+                          ? 'block truncate rounded px-1 py-1 text-xs font-medium text-inkly-ink bg-white/55'
+                          : 'block truncate rounded px-1 py-1 text-xs text-inkly-link hover:bg-white/40 hover:text-inkly-link-hover'
                       }
                       title={f.title}
                     >
@@ -160,7 +171,9 @@ export function CatalogSidebar({
           </ul>
         </div>
       ) : !catalogLoading ? (
-        <p className="mt-2 text-[11px] text-inkly-faint">{t("catalog.empty")}</p>
+        <p className="mt-2 text-[11px] text-inkly-faint">
+          {t('catalog.empty')}
+        </p>
       ) : null}
     </div>
   );

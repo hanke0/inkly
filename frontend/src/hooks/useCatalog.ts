@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react';
 
-import { fetchCatalog } from "../api";
-import type { CatalogResponse } from "../types";
+import { fetchCatalog } from '../api';
+import type { CatalogResponse } from '../types';
 
 export function useCatalog(catalogUrlPath: string) {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);

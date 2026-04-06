@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
-import { BrandHeader, type BrandHeaderSearchProps } from "./BrandHeader";
-import { CatalogSidebar } from "./CatalogSidebar";
-import type { CatalogResponse } from "../types";
+import { BrandHeader, type BrandHeaderSearchProps } from './BrandHeader';
+import { CatalogSidebar } from './CatalogSidebar';
+import type { CatalogResponse } from '../types';
 
 type SidebarLayoutProps = {
   searchHeaderProps: BrandHeaderSearchProps;
@@ -43,8 +43,7 @@ export function SidebarLayout({
       </aside>
       <main
         className={
-          mainClassName ??
-          "flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper"
+          mainClassName ?? 'flex min-h-0 min-w-0 flex-1 flex-col bg-inkly-paper'
         }
       >
         {children}

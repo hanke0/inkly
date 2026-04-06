@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useId, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
-import { useI18n } from "../i18n/context";
+import { useI18n } from '../i18n/context';
 
 /** Default search options; keep in sync with initial state in Dashboard / DocumentView. */
 export const DEFAULT_SEARCH_LIMIT = 10;
@@ -52,7 +52,7 @@ function SearchGlyph({ className }: { className?: string }) {
 function SettingsGlyph({ className }: { className?: string }) {
   return (
     <svg
-      className={["shrink-0", className].filter(Boolean).join(" ")}
+      className={['shrink-0', className].filter(Boolean).join(' ')}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -77,8 +77,8 @@ function searchSettingsDirty(search: BrandHeaderSearchProps): boolean {
   if (search.tagsFilter?.trim()) {
     return true;
   }
-  const path = search.catalogPath ?? "/";
-  if (path !== "/" && search.limitToFolder === false) {
+  const path = search.catalogPath ?? '/';
+  if (path !== '/' && search.limitToFolder === false) {
     return true;
   }
   return false;
@@ -108,8 +108,8 @@ export function BrandHeader({ search }: BrandHeaderProps) {
       }
       setOptionsOpen(false);
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
   }, [optionsOpen]);
 
   function onLimitFieldChange(raw: string) {
@@ -117,7 +117,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
       return;
     }
     const trimmed = raw.trim();
-    const n = trimmed === "" ? Number.NaN : Number(trimmed);
+    const n = trimmed === '' ? Number.NaN : Number(trimmed);
     search.onLimitChange(Number.isFinite(n) ? n : search.limit);
   }
 
@@ -126,9 +126,9 @@ export function BrandHeader({ search }: BrandHeaderProps) {
       return;
     }
     search.onLimitChange(DEFAULT_SEARCH_LIMIT);
-    search.onTagsFilterChange?.("");
-    const path = search.catalogPath ?? "/";
-    if (path !== "/") {
+    search.onTagsFilterChange?.('');
+    const path = search.catalogPath ?? '/';
+    if (path !== '/') {
       search.onLimitToFolderChange?.(true);
     }
   }
@@ -157,11 +157,11 @@ export function BrandHeader({ search }: BrandHeaderProps) {
           <div className="relative w-full min-w-0">
             <div className="relative z-0 flex min-w-0 flex-1 items-stretch overflow-hidden rounded-lg border border-inkly-border/80 bg-inkly-paper/90 focus-within:border-inkly-accent focus-within:ring-1 focus-within:ring-inkly-accent/30">
               <label htmlFor={inputId} className="sr-only">
-                {t("header.searchArchive")}
+                {t('header.searchArchive')}
               </label>
               <button
                 type="submit"
-                aria-label={t("header.searchLabel")}
+                aria-label={t('header.searchLabel')}
                 disabled={Boolean(search.loading)}
                 className="flex shrink-0 items-center border-0 bg-transparent py-1.5 pl-2 pr-0.5 text-inkly-muted transition-colors hover:text-inkly-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -176,7 +176,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                 className="min-w-0 flex-1 border-0 bg-transparent py-1.5 pl-0.5 pr-1 text-xs text-inkly-ink outline-none placeholder:text-inkly-faint disabled:opacity-60"
                 value={search.q}
                 onChange={(e) => search.onQChange(e.target.value)}
-                placeholder={t("header.placeholder")}
+                placeholder={t('header.placeholder')}
               />
               <div className="relative z-10 flex shrink-0 items-center pr-1.5">
                 <button
@@ -186,27 +186,29 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                   aria-expanded={optionsOpen}
                   aria-haspopup="dialog"
                   aria-label={
-                    settingsDirty ? t("header.searchSettingsDirty") : t("header.searchSettings")
+                    settingsDirty
+                      ? t('header.searchSettingsDirty')
+                      : t('header.searchSettings')
                   }
                   title={
                     settingsDirty
-                      ? t("header.searchSettingsDirtyTitle")
-                      : t("header.searchSettings")
+                      ? t('header.searchSettingsDirtyTitle')
+                      : t('header.searchSettings')
                   }
                   onClick={() => setOptionsOpen((o) => !o)}
                 >
                   <span
                     className={
                       settingsDirty
-                        ? "inline-flex items-center justify-center p-0.5 text-inkly-accent-hover"
-                        : "inline-flex items-center justify-center p-0.5 text-inkly-line opacity-[0.72]"
+                        ? 'inline-flex items-center justify-center p-0.5 text-inkly-accent-hover'
+                        : 'inline-flex items-center justify-center p-0.5 text-inkly-line opacity-[0.72]'
                     }
                   >
                     <SettingsGlyph
                       className={
                         settingsDirty
-                          ? "h-5 w-5 stroke-[2.35]"
-                          : "h-3.5 w-3.5 stroke-[1.55]"
+                          ? 'h-5 w-5 stroke-[2.35]'
+                          : 'h-3.5 w-3.5 stroke-[1.55]'
                       }
                     />
                   </span>
@@ -218,13 +220,13 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                 ref={optionsPanelRef}
                 className="absolute right-0 top-[calc(100%+4px)] z-40 w-52 rounded-lg border border-inkly-border bg-inkly-paper p-2.5 shadow-md"
                 role="dialog"
-                aria-label={t("header.settingsDialog")}
+                aria-label={t('header.settingsDialog')}
               >
                 <label
                   htmlFor={`${inputId}-limit`}
                   className="block text-[10px] font-semibold uppercase tracking-wide text-inkly-muted"
                 >
-                  {t("header.resultLimit")}
+                  {t('header.resultLimit')}
                 </label>
                 <input
                   id={`${inputId}-limit`}
@@ -235,7 +237,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                   value={search.limit}
                   onChange={(e) => onLimitFieldChange(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (e.key === 'Enter') {
                       e.preventDefault();
                     }
                   }}
@@ -244,40 +246,45 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                   htmlFor={`${inputId}-tags`}
                   className="mt-2.5 block text-[10px] font-semibold uppercase tracking-wide text-inkly-muted"
                 >
-                  {t("header.tagsAllRequired")}
+                  {t('header.tagsAllRequired')}
                 </label>
                 <input
                   id={`${inputId}-tags`}
                   type="text"
                   autoComplete="off"
-                  placeholder={t("header.tagsPlaceholder")}
+                  placeholder={t('header.tagsPlaceholder')}
                   className="mt-1 w-full rounded border border-inkly-border bg-white px-1.5 py-1 text-xs text-inkly-ink outline-none focus:border-inkly-accent focus:ring-1 focus:ring-inkly-accent/25"
-                  value={search.tagsFilter ?? ""}
+                  value={search.tagsFilter ?? ''}
                   onChange={(e) => search.onTagsFilterChange?.(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (e.key === 'Enter') {
                       e.preventDefault();
                     }
                   }}
                 />
-                {search.catalogPath != null && search.catalogPath !== "/" ? (
+                {search.catalogPath != null && search.catalogPath !== '/' ? (
                   <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-[11px] text-inkly-ink">
                     <input
                       type="checkbox"
                       className="h-3.5 w-3.5 rounded border-inkly-border text-inkly-accent focus:ring-inkly-accent/30"
                       checked={search.limitToFolder !== false}
-                      onChange={(e) => search.onLimitToFolderChange?.(e.target.checked)}
+                      onChange={(e) =>
+                        search.onLimitToFolderChange?.(e.target.checked)
+                      }
                     />
                     <span className="min-w-0 leading-snug">
-                      {t("header.limitTo")}{" "}
-                      <span className="font-mono text-[10px] text-inkly-muted" title={search.catalogPath}>
+                      {t('header.limitTo')}{' '}
+                      <span
+                        className="font-mono text-[10px] text-inkly-muted"
+                        title={search.catalogPath}
+                      >
                         {search.catalogPath}
                       </span>
                     </span>
                   </label>
                 ) : (
                   <p className="mt-2.5 text-[10px] leading-snug text-inkly-faint">
-                    {t("header.openFolderHint")}
+                    {t('header.openFolderHint')}
                   </p>
                 )}
                 <button
@@ -288,7 +295,7 @@ export function BrandHeader({ search }: BrandHeaderProps) {
                     resetSearchSettings();
                   }}
                 >
-                  {t("header.clearSettings")}
+                  {t('header.clearSettings')}
                 </button>
               </div>
             ) : null}

@@ -1,6 +1,6 @@
-import chardet from "chardet";
+import chardet from 'chardet';
 
-const UTF8_ALIASES = new Set(["UTF-8", "ASCII"]);
+const UTF8_ALIASES = new Set(['UTF-8', 'ASCII']);
 
 /**
  * Read a File, detect its character encoding, and return a new File
@@ -21,9 +21,9 @@ export async function ensureUtf8File(file: File): Promise<File> {
   const decoder = new TextDecoder(label);
   const text = decoder.decode(bytes);
 
-  const utf8Blob = new Blob([text], { type: file.type || "text/plain" });
+  const utf8Blob = new Blob([text], { type: file.type || 'text/plain' });
   return new File([utf8Blob], file.name, {
-    type: file.type || "text/plain",
+    type: file.type || 'text/plain',
     lastModified: file.lastModified,
   });
 }
@@ -34,8 +34,8 @@ export async function ensureUtf8File(file: File): Promise<File> {
  */
 function toTextDecoderLabel(enc: string): string {
   const map: Record<string, string> = {
-    "ISO-8859-1": "windows-1252",
-    "ISO-8859-9": "windows-1254",
+    'ISO-8859-1': 'windows-1252',
+    'ISO-8859-9': 'windows-1254',
   };
   return map[enc] ?? enc;
 }

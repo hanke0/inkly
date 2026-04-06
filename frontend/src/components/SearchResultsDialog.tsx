@@ -1,10 +1,10 @@
-import { useId, useRef } from "react";
-import { Link } from "react-router-dom";
+import { useId, useRef } from 'react';
+import { Link } from 'react-router-dom';
 
-import { useModalBehavior } from "../hooks/useModalBehavior";
-import { useI18n } from "../i18n/context";
-import { docLink } from "../lib/docLink";
-import type { SearchResponse } from "../types";
+import { useModalBehavior } from '../hooks/useModalBehavior';
+import { useI18n } from '../i18n/context';
+import { docLink } from '../lib/docLink';
+import type { SearchResponse } from '../types';
 
 type SearchResultsDialogProps = {
   open: boolean;
@@ -45,15 +45,18 @@ export function SearchResultsDialog({
         <div className="flex items-start justify-between gap-3 border-b border-inkly-border px-4 py-3 sm:px-5">
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-semibold text-inkly-ink">
-              {t("search.resultsTitle")}
+              {t('search.resultsTitle')}
             </h2>
             {queryHint ? (
-              <p className="mt-1 truncate text-sm text-inkly-muted" title={queryHint}>
+              <p
+                className="mt-1 truncate text-sm text-inkly-muted"
+                title={queryHint}
+              >
                 "{queryHint}"
               </p>
             ) : null}
             <p className="mt-1 text-xs text-inkly-faint">
-              {tf("search.hits", { n: response.total_hits })}
+              {tf('search.hits', { n: response.total_hits })}
             </p>
           </div>
           <button
@@ -61,7 +64,7 @@ export function SearchResultsDialog({
             type="button"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-inkly-muted transition-colors hover:bg-inkly-border-soft hover:text-inkly-ink"
             onClick={onClose}
-            aria-label={t("search.close")}
+            aria-label={t('search.close')}
           >
             <svg
               width="18"
@@ -82,7 +85,7 @@ export function SearchResultsDialog({
         <ul className="max-h-[36rem] space-y-2 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
           {response.results.length === 0 ? (
             <li className="rounded-lg border border-inkly-border bg-inkly-paper-warm px-3 py-6 text-center text-sm text-inkly-muted">
-              {t("search.noMatches")}
+              {t('search.noMatches')}
             </li>
           ) : (
             response.results.map((r) => (
@@ -92,15 +95,19 @@ export function SearchResultsDialog({
               >
                 <div className="flex items-start justify-between gap-2">
                   <Link
-                    to={docLink(r.doc_id, r.path || "/")}
+                    to={docLink(r.doc_id, r.path || '/')}
                     className="min-w-0 flex-1 font-medium text-inkly-link hover:text-inkly-link-hover"
                     onClick={onClose}
                   >
                     {r.title}
                   </Link>
-                  <span className="shrink-0 font-mono text-xs text-inkly-faint">{r.score.toFixed(2)}</span>
+                  <span className="shrink-0 font-mono text-xs text-inkly-faint">
+                    {r.score.toFixed(2)}
+                  </span>
                 </div>
-                <p className="mt-2 text-sm leading-relaxed text-inkly-muted">{r.snippet}</p>
+                <p className="mt-2 text-sm leading-relaxed text-inkly-muted">
+                  {r.snippet}
+                </p>
                 {r.summary ? (
                   <div className="mt-2 rounded border border-inkly-accent/10 border-l-[2.5px] border-l-inkly-accent/35 bg-inkly-accent/[0.03] px-2.5 py-1.5">
                     <p className="text-xs leading-relaxed text-inkly-muted/80">
@@ -115,15 +122,21 @@ export function SearchResultsDialog({
                   {r.tags.length > 0 ? (
                     <>
                       <span className="text-inkly-line">·</span>
-                      <span className="min-w-0 truncate font-mono" title={r.tags.join(", ")}>
-                        {r.tags.join(", ")}
+                      <span
+                        className="min-w-0 truncate font-mono"
+                        title={r.tags.join(', ')}
+                      >
+                        {r.tags.join(', ')}
                       </span>
                     </>
                   ) : null}
                   {r.doc_url ? (
                     <>
                       <span className="text-inkly-line">·</span>
-                      <span className="min-w-0 truncate font-mono" title={r.doc_url}>
+                      <span
+                        className="min-w-0 truncate font-mono"
+                        title={r.doc_url}
+                      >
                         {r.doc_url}
                       </span>
                     </>
