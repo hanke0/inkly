@@ -48,11 +48,10 @@ export const messages: Record<MessageKey, string> = {
   'form.htmlCleanupHelp':
     '在预览中点击要选中的元素，再用下方按钮或 Delete / Backspace 删除。「应用」会保存到待上传内容；「取消」关闭弹窗且不保存本弹窗内的修改。预览中不会执行脚本。',
   'form.htmlCleanupDeleteSelected': '删除选中元素',
-  'form.htmlCleanupRemoveNonDisplayed':
-    '清理不展示内容（hidden、display:none、隐藏输入框）',
+  'form.htmlCleanupRemoveNonDisplayed': '清理隐藏内容',
   'form.htmlCleanupReset': '从文件恢复',
   'form.htmlCleanupIframeTitle': 'HTML 预览 — 索引前可点击选中并移除不需要的块',
-  'form.htmlCleanupOpenDialog': '编辑 HTML — 点击删除块…',
+  'form.htmlCleanupOpenDialog': '编辑 HTML',
   'form.textUploadOpenDialog': '编辑文件后再索引…',
   'form.textUploadEditHint':
     '「应用」会将修改保存到待上传内容；「取消」关闭弹窗且不保存本弹窗内的修改。',

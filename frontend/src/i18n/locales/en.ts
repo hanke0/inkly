@@ -48,12 +48,11 @@ export const messages = {
   'form.htmlCleanupHelp':
     'Click an element in the preview to select it, then remove it with the button below or Delete / Backspace. Apply saves changes to the upload; Cancel closes without saving. Scripts are not run in this preview.',
   'form.htmlCleanupDeleteSelected': 'Remove selected',
-  'form.htmlCleanupRemoveNonDisplayed':
-    'Strip non-displayed blocks (hidden, display:none, hidden inputs)',
+  'form.htmlCleanupRemoveNonDisplayed': 'Clean hidden content',
   'form.htmlCleanupReset': 'Reset from file',
   'form.htmlCleanupIframeTitle':
     'HTML preview — click to select blocks to remove before indexing',
-  'form.htmlCleanupOpenDialog': 'Edit HTML — click to remove blocks…',
+  'form.htmlCleanupOpenDialog': 'Edit HTML',
   'form.textUploadOpenDialog': 'Edit file before indexing…',
   'form.textUploadEditHint':
     'Apply saves your edits to the upload; Cancel closes without saving this dialog.',
