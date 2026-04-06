@@ -19,7 +19,7 @@ export function NewDocumentModal({
   const { t } = useI18n();
   const titleId = useId();
   useModalBehavior(open, onClose, undefined, {
-    closeOnEscape: !form.htmlCleanupModalOpen,
+    closeOnEscape: !form.htmlCleanupModalOpen && !form.textUploadEditModalOpen,
   });
 
   if (!open) {

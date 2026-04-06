@@ -4,8 +4,10 @@ import { indexDocumentUpload, updateDocument } from '../api';
 import { useI18n } from '../i18n/context';
 import { ensureUtf8File } from '../lib/encoding';
 import {
+  guessUploadFileMimeType,
   htmlToMarkdown,
   isHtmlFile,
+  isTextLikeUploadFile,
   readFileAsText,
 } from '../lib/htmlToMarkdown';
 import type { DocumentDetailResponse, IndexResponse } from '../types';
@@ -36,13 +38,14 @@ export function useNewDocumentForm(
   const [htmlUploadText, setHtmlUploadText] = useState<string | null>(null);
   const [htmlUploadLoading, setHtmlUploadLoading] = useState(false);
   const [htmlCleanupModalOpen, setHtmlCleanupModalOpen] = useState(false);
+  const [textUploadEditModalOpen, setTextUploadEditModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
   const isEditing = editingDocId !== null;
 
   useEffect(() => {
-    if (!contentFile || !isHtmlFile(contentFile)) {
+    if (!contentFile || !isTextLikeUploadFile(contentFile)) {
       setHtmlUploadText(null);
       setHtmlUploadLoading(false);
       return;
@@ -74,6 +77,7 @@ export function useNewDocumentForm(
     setHtmlUploadText(null);
     setHtmlUploadLoading(false);
     setHtmlCleanupModalOpen(false);
+    setTextUploadEditModalOpen(false);
     if (contentFileInputRef.current) {
       contentFileInputRef.current.value = '';
     }
@@ -92,7 +96,7 @@ export function useNewDocumentForm(
   const isHtmlFileSelected = contentFile != null && isHtmlFile(contentFile);
 
   async function resetHtmlUploadFromFile(): Promise<string | null> {
-    if (!contentFile || !isHtmlFile(contentFile)) {
+    if (!contentFile || !isTextLikeUploadFile(contentFile)) {
       return null;
     }
     setFormError('');
@@ -112,6 +116,14 @@ export function useNewDocumentForm(
 
   function closeHtmlCleanupModal() {
     setHtmlCleanupModalOpen(false);
+  }
+
+  function openTextUploadEditModal() {
+    setTextUploadEditModalOpen(true);
+  }
+
+  function closeTextUploadEditModal() {
+    setTextUploadEditModalOpen(false);
   }
 
   async function convertHtmlFile() {
@@ -198,7 +210,7 @@ export function useNewDocumentForm(
         });
       } else if (contentFile) {
         let fileForUpload = contentFile;
-        if (isHtmlFile(contentFile)) {
+        if (isTextLikeUploadFile(contentFile)) {
           let raw = htmlUploadText;
           if (raw === null) {
             try {
@@ -209,8 +221,12 @@ export function useNewDocumentForm(
               return;
             }
           }
+          const mime = guessUploadFileMimeType(
+            contentFile.name,
+            contentFile.type,
+          );
           fileForUpload = new File([raw], contentFile.name, {
-            type: contentFile.type || 'text/html;charset=utf-8',
+            type: mime,
           });
         }
         if (fileForUpload.size === 0) {
@@ -279,6 +295,9 @@ export function useNewDocumentForm(
     openHtmlCleanupModal,
     closeHtmlCleanupModal,
     resetHtmlUploadFromFile,
+    textUploadEditModalOpen,
+    openTextUploadEditModal,
+    closeTextUploadEditModal,
     convertHtmlFile,
     converting,
     convertedFromHtml,

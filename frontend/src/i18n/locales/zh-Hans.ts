@@ -43,8 +43,8 @@ export const messages: Record<MessageKey, string> = {
 
   'form.addContentOrUpload': '请在文本框中填写内容，或上传文本 / HTML 文件。',
   'form.convertHtmlFailed': '将 HTML 转为 Markdown 失败。',
-  'form.htmlReadFailed': '无法读取该 HTML 文件。请移除后重试，或换用其他文件。',
-  'form.htmlCleanupLoading': '正在加载 HTML 预览…',
+  'form.htmlReadFailed': '无法读取上传的文件。请移除后重试，或换用其他文件。',
+  'form.uploadDraftLoading': '正在加载文件…',
   'form.htmlCleanupHelp':
     '在预览中点击要选中的元素，再用下方按钮或 Delete / Backspace 删除。「应用」会保存到待上传内容；「取消」关闭弹窗且不保存本弹窗内的修改。预览中不会执行脚本。',
   'form.htmlCleanupDeleteSelected': '删除选中元素',
@@ -53,6 +53,9 @@ export const messages: Record<MessageKey, string> = {
   'form.htmlCleanupReset': '从文件恢复',
   'form.htmlCleanupIframeTitle': 'HTML 预览 — 索引前可点击选中并移除不需要的块',
   'form.htmlCleanupOpenDialog': '编辑 HTML — 点击删除块…',
+  'form.textUploadOpenDialog': '编辑文件后再索引…',
+  'form.textUploadEditHint':
+    '「应用」会将修改保存到待上传内容；「取消」关闭弹窗且不保存本弹窗内的修改。',
   'form.htmlCleanupApply': '应用',
   'form.htmlCleanupCancel': '取消',
   'form.docUrl': '来源 URL',
@@ -107,6 +110,7 @@ export const messages: Record<MessageKey, string> = {
   'modal.closeAria': '关闭',
   'modal.editDoc': '编辑文档',
   'modal.htmlCleanupTitle': '删除 HTML 页面中的部分内容',
+  'modal.textUploadEditTitle': '编辑上传的文本',
   'modal.newDoc': '新建文档',
 
   'search.close': '关闭',

@@ -3,6 +3,8 @@ import { Fragment, useId, useRef, useState, type ReactNode } from 'react';
 import type { NewDocumentFormState } from '../hooks/useNewDocumentForm';
 import { useI18n } from '../i18n/context';
 import { HtmlUploadCleanupModal } from './HtmlUploadCleanupModal';
+import { TextUploadEditModal } from './TextUploadEditModal';
+import { isTextLikeUploadFile } from '../lib/htmlToMarkdown';
 import { TiptapEditor } from './TiptapEditor';
 
 type IndexDocumentFormProps = {
@@ -164,11 +166,9 @@ function UploadArea({
     clearFileInput,
     isHtmlFileSelected,
     htmlUploadText,
-    setHtmlUploadText,
     htmlUploadLoading,
-    htmlCleanupModalOpen,
     openHtmlCleanupModal,
-    closeHtmlCleanupModal,
+    openTextUploadEditModal,
     resetHtmlUploadFromFile,
     convertHtmlFile,
     converting,
@@ -224,7 +224,9 @@ function UploadArea({
               {t('form.removeFile')}
             </button>
           </div>
-          {isHtmlFileSelected && htmlUploadLoading ? (
+          {contentFile &&
+          isTextLikeUploadFile(contentFile) &&
+          htmlUploadLoading ? (
             <p className="flex items-center gap-2 rounded-lg border border-inkly-line/50 bg-inkly-paper-warm/40 px-3 py-2 text-xs text-inkly-muted">
               <svg
                 className="h-4 w-4 shrink-0 animate-spin text-inkly-accent"
@@ -246,7 +248,7 @@ function UploadArea({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 />
               </svg>
-              {t('form.htmlCleanupLoading')}
+              {t('form.uploadDraftLoading')}
             </p>
           ) : null}
           {isHtmlFileSelected &&
@@ -272,6 +274,33 @@ function UploadArea({
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
               </svg>
               {t('form.htmlCleanupOpenDialog')}
+            </button>
+          ) : null}
+          {!isHtmlFileSelected &&
+          contentFile &&
+          isTextLikeUploadFile(contentFile) &&
+          htmlUploadText !== null &&
+          !htmlUploadLoading ? (
+            <button
+              type="button"
+              onClick={openTextUploadEditModal}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-inkly-border/80 bg-white px-3 py-2 text-sm font-medium text-inkly-ink-soft shadow-sm transition hover:border-inkly-accent/40 hover:text-inkly-accent"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+              {t('form.textUploadOpenDialog')}
             </button>
           ) : null}
           {isHtmlFileSelected && (
@@ -430,6 +459,8 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
     isEditing,
     htmlCleanupModalOpen,
     closeHtmlCleanupModal,
+    textUploadEditModalOpen,
+    closeTextUploadEditModal,
     htmlUploadText,
     setHtmlUploadText,
     resetHtmlUploadFromFile,
@@ -683,6 +714,15 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         initialHtml={htmlUploadText ?? ''}
         onApply={(html) => {
           setHtmlUploadText(html);
+        }}
+        onResetFromFile={resetHtmlUploadFromFile}
+      />
+      <TextUploadEditModal
+        open={textUploadEditModalOpen}
+        onClose={closeTextUploadEditModal}
+        initialText={htmlUploadText ?? ''}
+        onApply={(text) => {
+          setHtmlUploadText(text);
         }}
         onResetFromFile={resetHtmlUploadFromFile}
       />

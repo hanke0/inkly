@@ -37,9 +37,46 @@ export function htmlToMarkdown(html: string): string {
 
 const HTML_EXTENSIONS = new Set(['.html', '.htm']);
 
+const TEXT_LIKE_EXTENSIONS = new Set([
+  '.txt',
+  '.md',
+  '.markdown',
+  '.html',
+  '.htm',
+]);
+
 export function isHtmlFile(file: File): boolean {
   const name = file.name.toLowerCase();
   return HTML_EXTENSIONS.has(name.slice(name.lastIndexOf('.')));
+}
+
+/** UTF-8 text uploads we load into the draft buffer (HTML + plain / Markdown). */
+export function isTextLikeUploadFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const dot = name.lastIndexOf('.');
+  if (dot < 0) {
+    return false;
+  }
+  return TEXT_LIKE_EXTENSIONS.has(name.slice(dot));
+}
+
+/** MIME for synthetic `File` when uploading edited draft text. */
+export function guessUploadFileMimeType(
+  name: string,
+  fileType: string,
+): string {
+  const t = fileType.trim();
+  if (t !== '') {
+    return t;
+  }
+  const n = name.toLowerCase();
+  if (n.endsWith('.html') || n.endsWith('.htm')) {
+    return 'text/html;charset=utf-8';
+  }
+  if (n.endsWith('.md') || n.endsWith('.markdown')) {
+    return 'text/markdown;charset=utf-8';
+  }
+  return 'text/plain;charset=utf-8';
 }
 
 export async function readFileAsText(file: File): Promise<string> {
