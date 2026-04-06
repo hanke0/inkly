@@ -42,6 +42,20 @@ export const messages = {
   'form.addContentOrUpload':
     'Add content in the text area or upload a text / HTML file.',
   'form.convertHtmlFailed': 'Failed to convert HTML to Markdown.',
+  'form.htmlReadFailed':
+    'Could not read the HTML file. Remove the file and try again, or pick a different file.',
+  'form.htmlCleanupLoading': 'Loading HTML preview…',
+  'form.htmlCleanupHelp':
+    'Click an element in the preview to select it, then remove it with the button below or Delete / Backspace. Apply saves changes to the upload; Cancel closes without saving. Scripts are not run in this preview.',
+  'form.htmlCleanupDeleteSelected': 'Remove selected',
+  'form.htmlCleanupRemoveNonDisplayed':
+    'Strip non-displayed blocks (hidden, display:none, hidden inputs)',
+  'form.htmlCleanupReset': 'Reset from file',
+  'form.htmlCleanupIframeTitle':
+    'HTML preview — click to select blocks to remove before indexing',
+  'form.htmlCleanupOpenDialog': 'Edit HTML — click to remove blocks…',
+  'form.htmlCleanupApply': 'Apply',
+  'form.htmlCleanupCancel': 'Cancel',
   'form.docUrl': 'Source URL',
   'form.pageTitlePlaceholder': 'Page title',
   'form.pathPlaceholderShort': '/ or /notes/',
@@ -95,6 +109,7 @@ export const messages = {
 
   'modal.closeAria': 'Close',
   'modal.editDoc': 'Edit document',
+  'modal.htmlCleanupTitle': 'Remove parts of the HTML page',
   'modal.newDoc': 'New document',
 
   'search.close': 'Close',

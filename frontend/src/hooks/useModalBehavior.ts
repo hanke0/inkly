@@ -1,5 +1,10 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
+export type ModalBehaviorOptions = {
+  /** When false, Escape does not call `onClose` (e.g. a nested dialog is open). */
+  closeOnEscape?: boolean;
+};
+
 /**
  * Shared modal behavior: dismiss on Escape, lock body scroll while open,
  * and optionally auto-focus an element on open.
@@ -11,16 +16,19 @@ export function useModalBehavior(
   open: boolean,
   onClose: () => void,
   autoFocusRef?: RefObject<HTMLElement | null>,
+  options?: ModalBehaviorOptions,
 ) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const closeOnEscapeRef = useRef(options?.closeOnEscape !== false);
+  closeOnEscapeRef.current = options?.closeOnEscape !== false;
 
   useEffect(() => {
     if (!open) {
       return;
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && closeOnEscapeRef.current) {
         onCloseRef.current();
       }
     }

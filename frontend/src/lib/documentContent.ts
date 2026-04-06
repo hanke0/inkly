@@ -226,6 +226,92 @@ export function buildIframeSrcdocNoJs(raw: string): string {
   return `${doctype}\n${root.outerHTML}`;
 }
 
+const INKLY_STYLE_SELECTOR = 'style[data-inkly],style[data-inkly-html-cleanup]';
+
+/** Class toggled in the HTML upload cleanup iframe (removed before upload). */
+export const HTML_UPLOAD_CLEANUP_SELECTED_CLASS =
+  'inkly-html-upload-cleanup-selected';
+
+/**
+ * Serialize a live iframe `Document` after user edits (e.g. removed nodes) for upload.
+ * Strips Inkly-injected styles and cleanup selection outlines; preserves doctype from `originalRaw`.
+ */
+export function serializeIframeHtmlForUpload(
+  doc: Document,
+  originalRaw: string,
+): string {
+  doc.querySelectorAll(INKLY_STYLE_SELECTOR).forEach((el) => el.remove());
+  doc
+    .querySelectorAll(`.${HTML_UPLOAD_CLEANUP_SELECTED_CLASS}`)
+    .forEach((el) => el.classList.remove(HTML_UPLOAD_CLEANUP_SELECTED_CLASS));
+
+  const root = doc.documentElement;
+  if (!root) {
+    return originalRaw;
+  }
+
+  const doctype = isProbablyFullHtmlDocument(originalRaw)
+    ? extractDoctypeDeclaration(originalRaw)
+    : '<!DOCTYPE html>';
+  return `${doctype}\n${root.outerHTML}`;
+}
+
+function elementDepthBelowBody(el: Element, body: HTMLElement): number {
+  let d = 0;
+  let n: Element | null = el;
+  while (n && n !== body) {
+    d += 1;
+    n = n.parentElement;
+  }
+  return d;
+}
+
+/**
+ * Remove elements under `doc.body` that are not shown in layout: `[hidden]`,
+ * computed `display: none`, and `input[type="hidden"]`.
+ * Deepest matches are removed first so nested `display:none` subtrees are handled safely.
+ */
+export function removeNonDisplayedBodyElements(doc: Document): number {
+  const body = doc.body;
+  const win = doc.defaultView;
+  if (!body || !win) {
+    return 0;
+  }
+
+  const matches = new Set<Element>();
+  for (const el of body.querySelectorAll('*')) {
+    if (el.hasAttribute('hidden')) {
+      matches.add(el);
+      continue;
+    }
+    if (
+      el.tagName === 'INPUT' &&
+      el.getAttribute('type')?.toLowerCase() === 'hidden'
+    ) {
+      matches.add(el);
+      continue;
+    }
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none') {
+      matches.add(el);
+    }
+  }
+
+  const ordered = [...matches].sort(
+    (a, b) => elementDepthBelowBody(b, body) - elementDepthBelowBody(a, body),
+  );
+
+  let removed = 0;
+  for (const el of ordered) {
+    if (!body.contains(el)) {
+      continue;
+    }
+    el.remove();
+    removed += 1;
+  }
+  return removed;
+}
+
 /**
  * Markdown → inline sanitized HTML. HTML → `srcdoc` via DOM strip (no JS, full CSS).
  */

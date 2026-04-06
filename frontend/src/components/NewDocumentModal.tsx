@@ -18,7 +18,9 @@ export function NewDocumentModal({
 }: NewDocumentModalProps) {
   const { t } = useI18n();
   const titleId = useId();
-  useModalBehavior(open, onClose);
+  useModalBehavior(open, onClose, undefined, {
+    closeOnEscape: !form.htmlCleanupModalOpen,
+  });
 
   if (!open) {
     return null;

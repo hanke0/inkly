@@ -1,7 +1,8 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useId, useRef, useState, type ReactNode } from 'react';
 
 import type { NewDocumentFormState } from '../hooks/useNewDocumentForm';
 import { useI18n } from '../i18n/context';
+import { HtmlUploadCleanupModal } from './HtmlUploadCleanupModal';
 import { TiptapEditor } from './TiptapEditor';
 
 type IndexDocumentFormProps = {
@@ -162,6 +163,13 @@ function UploadArea({
     contentFileInputRef,
     clearFileInput,
     isHtmlFileSelected,
+    htmlUploadText,
+    setHtmlUploadText,
+    htmlUploadLoading,
+    htmlCleanupModalOpen,
+    openHtmlCleanupModal,
+    closeHtmlCleanupModal,
+    resetHtmlUploadFromFile,
     convertHtmlFile,
     converting,
   } = form;
@@ -216,10 +224,60 @@ function UploadArea({
               {t('form.removeFile')}
             </button>
           </div>
+          {isHtmlFileSelected && htmlUploadLoading ? (
+            <p className="flex items-center gap-2 rounded-lg border border-inkly-line/50 bg-inkly-paper-warm/40 px-3 py-2 text-xs text-inkly-muted">
+              <svg
+                className="h-4 w-4 shrink-0 animate-spin text-inkly-accent"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              {t('form.htmlCleanupLoading')}
+            </p>
+          ) : null}
+          {isHtmlFileSelected &&
+          htmlUploadText !== null &&
+          !htmlUploadLoading ? (
+            <button
+              type="button"
+              onClick={openHtmlCleanupModal}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-inkly-border/80 bg-white px-3 py-2 text-sm font-medium text-inkly-ink-soft shadow-sm transition hover:border-inkly-accent/40 hover:text-inkly-accent"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+              {t('form.htmlCleanupOpenDialog')}
+            </button>
+          ) : null}
           {isHtmlFileSelected && (
             <button
               type="button"
-              disabled={converting}
+              disabled={converting || htmlUploadLoading}
               onClick={convertHtmlFile}
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-inkly-accent/30 bg-white px-3 py-2 text-sm font-medium text-inkly-accent shadow-sm transition hover:bg-inkly-accent/5 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -370,165 +428,113 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
     formError,
     submit,
     isEditing,
+    htmlCleanupModalOpen,
+    closeHtmlCleanupModal,
+    htmlUploadText,
+    setHtmlUploadText,
+    resetHtmlUploadFromFile,
   } = form;
 
   const isEditor = !isEditing && contentMode === 'editor';
 
   return (
-    <form
-      className={`flex flex-col font-inkly-read-ui ${isEditor ? 'min-h-0 flex-1 gap-3' : 'gap-3'}`}
-      onSubmit={submit}
-    >
-      {formError ? (
-        <div
-          className="rounded-md border border-red-200/90 bg-red-50/90 px-2.5 py-1.5 text-xs leading-snug text-red-800"
-          role="alert"
-        >
-          {formError}
-        </div>
-      ) : null}
-
-      {isEditor ? (
-        <>
-          <div>
-            <label htmlFor="idx-title" className={labelCls}>
-              {t('form.title')} <span className="text-red-400">*</span>
-            </label>
-            <input
-              id="idx-title"
-              required
-              autoFocus
-              className={inputCls}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t('form.pageTitlePlaceholder')}
-            />
+    <Fragment>
+      <form
+        className={`flex flex-col font-inkly-read-ui ${isEditor ? 'min-h-0 flex-1 gap-3' : 'gap-3'}`}
+        onSubmit={submit}
+      >
+        {formError ? (
+          <div
+            className="rounded-md border border-red-200/90 bg-red-50/90 px-2.5 py-1.5 text-xs leading-snug text-red-800"
+            role="alert"
+          >
+            {formError}
           </div>
+        ) : null}
 
-          <EditorArea form={form} />
-
-          <details className="group rounded-lg border border-inkly-line/40 bg-inkly-paper-warm/20 shadow-sm ring-1 ring-white/40">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 px-3 py-2 text-inkly-faint transition hover:text-inkly-muted [&::-webkit-details-marker]:hidden">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="transition group-open:rotate-90"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-              <span className="font-inkly-read-ui text-[10px] font-medium tracking-wide">
-                {t('form.moreMetadata')}
-              </span>
-            </summary>
-            <div className="space-y-3 border-t border-inkly-line/40 px-3 pb-3 pt-2">
-              <div>
-                <label htmlFor="idx-path" className={labelCls}>
-                  {t('form.path')}
-                </label>
-                <input
-                  id="idx-path"
-                  className={`${inputCls} font-mono text-[12px]`}
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder={t('form.pathPlaceholderShort')}
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="idx-url" className={labelCls}>
-                    {t('form.docUrl')}
-                  </label>
-                  <input
-                    id="idx-url"
-                    type="url"
-                    className={`${inputCls} font-mono text-[12px]`}
-                    value={docUrl}
-                    onChange={(e) => setDocUrl(e.target.value)}
-                    placeholder={t('form.urlPlaceholder')}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>{t('form.tags')}</label>
-                  <TagsInput value={tagsText} onChange={setTagsText} />
-                </div>
-              </div>
-              <div>
-                <label className={labelCls}>{t('form.note')}</label>
-                <TiptapEditor
-                  initialContent={note}
-                  onChange={setNote}
-                  placeholder={t('form.optionalPlaceholder')}
-                  compact
-                />
-              </div>
-            </div>
-          </details>
-        </>
-      ) : isEditing ? (
-        <FormSection>
-          <div>
-            <label htmlFor="idx-title" className={labelCls}>
-              {t('form.title')} <span className="text-red-400">*</span>
-            </label>
-            <input
-              id="idx-title"
-              required
-              autoFocus
-              className={inputCls}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t('form.pageTitlePlaceholder')}
-            />
-          </div>
-          <div>
-            <label htmlFor="idx-path" className={labelCls}>
-              {t('form.path')}
-            </label>
-            <input
-              id="idx-path"
-              className={`${inputCls} font-mono text-[12px]`}
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder={t('form.pathPlaceholderShort')}
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {isEditor ? (
+          <>
             <div>
-              <label htmlFor="idx-url" className={labelCls}>
-                {t('form.docUrl')}
+              <label htmlFor="idx-title" className={labelCls}>
+                {t('form.title')} <span className="text-red-400">*</span>
               </label>
               <input
-                id="idx-url"
-                type="url"
-                className={`${inputCls} font-mono text-[12px]`}
-                value={docUrl}
-                onChange={(e) => setDocUrl(e.target.value)}
-                placeholder={t('form.urlPlaceholder')}
+                id="idx-title"
+                required
+                autoFocus
+                className={inputCls}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={t('form.pageTitlePlaceholder')}
               />
             </div>
-            <div>
-              <label className={labelCls}>{t('form.tags')}</label>
-              <TagsInput value={tagsText} onChange={setTagsText} />
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>{t('form.note')}</label>
-            <TiptapEditor
-              initialContent={note}
-              onChange={setNote}
-              placeholder={t('form.optionalPlaceholder')}
-              compact
-            />
-          </div>
-        </FormSection>
-      ) : (
-        <>
+
+            <EditorArea form={form} />
+
+            <details className="group rounded-lg border border-inkly-line/40 bg-inkly-paper-warm/20 shadow-sm ring-1 ring-white/40">
+              <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 px-3 py-2 text-inkly-faint transition hover:text-inkly-muted [&::-webkit-details-marker]:hidden">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="transition group-open:rotate-90"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                <span className="font-inkly-read-ui text-[10px] font-medium tracking-wide">
+                  {t('form.moreMetadata')}
+                </span>
+              </summary>
+              <div className="space-y-3 border-t border-inkly-line/40 px-3 pb-3 pt-2">
+                <div>
+                  <label htmlFor="idx-path" className={labelCls}>
+                    {t('form.path')}
+                  </label>
+                  <input
+                    id="idx-path"
+                    className={`${inputCls} font-mono text-[12px]`}
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder={t('form.pathPlaceholderShort')}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="idx-url" className={labelCls}>
+                      {t('form.docUrl')}
+                    </label>
+                    <input
+                      id="idx-url"
+                      type="url"
+                      className={`${inputCls} font-mono text-[12px]`}
+                      value={docUrl}
+                      onChange={(e) => setDocUrl(e.target.value)}
+                      placeholder={t('form.urlPlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t('form.tags')}</label>
+                    <TagsInput value={tagsText} onChange={setTagsText} />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelCls}>{t('form.note')}</label>
+                  <TiptapEditor
+                    initialContent={note}
+                    onChange={setNote}
+                    placeholder={t('form.optionalPlaceholder')}
+                    compact
+                  />
+                </div>
+              </div>
+            </details>
+          </>
+        ) : isEditing ? (
           <FormSection>
             <div>
               <label htmlFor="idx-title" className={labelCls}>
@@ -544,10 +550,6 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 placeholder={t('form.pageTitlePlaceholder')}
               />
             </div>
-            <UploadArea form={form} fileInputId={fileInputId} />
-          </FormSection>
-
-          <FormSection>
             <div>
               <label htmlFor="idx-path" className={labelCls}>
                 {t('form.path')}
@@ -559,11 +561,6 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
                 onChange={(e) => setPath(e.target.value)}
                 placeholder={t('form.pathPlaceholderShort')}
               />
-              <p className="mt-0.5 text-[10px] leading-tight text-inkly-faint">
-                <span className="font-mono text-inkly-muted">/</span>{' '}
-                {t('form.pathHintOr')}{' '}
-                <span className="font-mono text-inkly-muted">/a/b/</span>
-              </p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -594,24 +591,101 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
               />
             </div>
           </FormSection>
-        </>
-      )}
+        ) : (
+          <>
+            <FormSection>
+              <div>
+                <label htmlFor="idx-title" className={labelCls}>
+                  {t('form.title')} <span className="text-red-400">*</span>
+                </label>
+                <input
+                  id="idx-title"
+                  required
+                  autoFocus
+                  className={inputCls}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t('form.pageTitlePlaceholder')}
+                />
+              </div>
+              <UploadArea form={form} fileInputId={fileInputId} />
+            </FormSection>
 
-      <div className="flex shrink-0 justify-end border-t border-inkly-line/40 pt-2.5">
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-lg bg-inkly-accent px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-inkly-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading
-            ? isEditing
-              ? t('form.saving')
-              : t('form.indexing')
-            : isEditing
-              ? t('form.saveChanges')
-              : t('form.indexDocument')}
-        </button>
-      </div>
-    </form>
+            <FormSection>
+              <div>
+                <label htmlFor="idx-path" className={labelCls}>
+                  {t('form.path')}
+                </label>
+                <input
+                  id="idx-path"
+                  className={`${inputCls} font-mono text-[12px]`}
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder={t('form.pathPlaceholderShort')}
+                />
+                <p className="mt-0.5 text-[10px] leading-tight text-inkly-faint">
+                  <span className="font-mono text-inkly-muted">/</span>{' '}
+                  {t('form.pathHintOr')}{' '}
+                  <span className="font-mono text-inkly-muted">/a/b/</span>
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="idx-url" className={labelCls}>
+                    {t('form.docUrl')}
+                  </label>
+                  <input
+                    id="idx-url"
+                    type="url"
+                    className={`${inputCls} font-mono text-[12px]`}
+                    value={docUrl}
+                    onChange={(e) => setDocUrl(e.target.value)}
+                    placeholder={t('form.urlPlaceholder')}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>{t('form.tags')}</label>
+                  <TagsInput value={tagsText} onChange={setTagsText} />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>{t('form.note')}</label>
+                <TiptapEditor
+                  initialContent={note}
+                  onChange={setNote}
+                  placeholder={t('form.optionalPlaceholder')}
+                  compact
+                />
+              </div>
+            </FormSection>
+          </>
+        )}
+
+        <div className="flex shrink-0 justify-end border-t border-inkly-line/40 pt-2.5">
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-lg bg-inkly-accent px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-inkly-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading
+              ? isEditing
+                ? t('form.saving')
+                : t('form.indexing')
+              : isEditing
+                ? t('form.saveChanges')
+                : t('form.indexDocument')}
+          </button>
+        </div>
+      </form>
+      <HtmlUploadCleanupModal
+        open={htmlCleanupModalOpen}
+        onClose={closeHtmlCleanupModal}
+        initialHtml={htmlUploadText ?? ''}
+        onApply={(html) => {
+          setHtmlUploadText(html);
+        }}
+        onResetFromFile={resetHtmlUploadFromFile}
+      />
+    </Fragment>
   );
 }

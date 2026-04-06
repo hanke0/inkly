@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { indexDocumentUpload, updateDocument } from '../api';
 import { useI18n } from '../i18n/context';
@@ -33,13 +33,47 @@ export function useNewDocumentForm(
 
   const [converting, setConverting] = useState(false);
   const [convertedFromHtml, setConvertedFromHtml] = useState(false);
+  const [htmlUploadText, setHtmlUploadText] = useState<string | null>(null);
+  const [htmlUploadLoading, setHtmlUploadLoading] = useState(false);
+  const [htmlCleanupModalOpen, setHtmlCleanupModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
   const isEditing = editingDocId !== null;
 
+  useEffect(() => {
+    if (!contentFile || !isHtmlFile(contentFile)) {
+      setHtmlUploadText(null);
+      setHtmlUploadLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setHtmlUploadLoading(true);
+    setHtmlUploadText(null);
+    readFileAsText(contentFile)
+      .then((text) => {
+        if (!cancelled) {
+          setHtmlUploadText(text);
+          setHtmlUploadLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHtmlUploadText(null);
+          setHtmlUploadLoading(false);
+          setFormError(t('form.htmlReadFailed'));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contentFile, t]);
+
   function clearFileInput() {
     setContentFile(null);
+    setHtmlUploadText(null);
+    setHtmlUploadLoading(false);
+    setHtmlCleanupModalOpen(false);
     if (contentFileInputRef.current) {
       contentFileInputRef.current.value = '';
     }
@@ -57,12 +91,38 @@ export function useNewDocumentForm(
 
   const isHtmlFileSelected = contentFile != null && isHtmlFile(contentFile);
 
+  async function resetHtmlUploadFromFile(): Promise<string | null> {
+    if (!contentFile || !isHtmlFile(contentFile)) {
+      return null;
+    }
+    setFormError('');
+    try {
+      const raw = await readFileAsText(contentFile);
+      setHtmlUploadText(raw);
+      return raw;
+    } catch {
+      setFormError(t('form.htmlReadFailed'));
+      return null;
+    }
+  }
+
+  function openHtmlCleanupModal() {
+    setHtmlCleanupModalOpen(true);
+  }
+
+  function closeHtmlCleanupModal() {
+    setHtmlCleanupModalOpen(false);
+  }
+
   async function convertHtmlFile() {
     if (!contentFile || !isHtmlFile(contentFile)) return;
     setConverting(true);
     setFormError('');
     try {
-      const raw = await readFileAsText(contentFile);
+      const raw =
+        htmlUploadText !== null
+          ? htmlUploadText
+          : await readFileAsText(contentFile);
       const md = htmlToMarkdown(raw);
       setContent(md);
       setConvertedFromHtml(true);
@@ -137,12 +197,28 @@ export function useNewDocumentForm(
           note,
         });
       } else if (contentFile) {
-        if (contentFile.size === 0) {
+        let fileForUpload = contentFile;
+        if (isHtmlFile(contentFile)) {
+          let raw = htmlUploadText;
+          if (raw === null) {
+            try {
+              raw = await readFileAsText(contentFile);
+            } catch {
+              setFormError(t('form.htmlReadFailed'));
+              setLoading(false);
+              return;
+            }
+          }
+          fileForUpload = new File([raw], contentFile.name, {
+            type: contentFile.type || 'text/html;charset=utf-8',
+          });
+        }
+        if (fileForUpload.size === 0) {
           setFormError(t('form.uploadEmpty'));
           setLoading(false);
           return;
         }
-        const utf8File = await ensureUtf8File(contentFile);
+        const utf8File = await ensureUtf8File(fileForUpload);
         const fd = new FormData();
         fd.append('file', utf8File);
         fd.append('title', title.trim());
@@ -196,6 +272,13 @@ export function useNewDocumentForm(
     contentFileInputRef,
     clearFileInput,
     isHtmlFileSelected,
+    htmlUploadText,
+    setHtmlUploadText,
+    htmlUploadLoading,
+    htmlCleanupModalOpen,
+    openHtmlCleanupModal,
+    closeHtmlCleanupModal,
+    resetHtmlUploadFromFile,
     convertHtmlFile,
     converting,
     convertedFromHtml,
