@@ -1,5 +1,4 @@
 import type {
-  BulkIndexIn,
   CatalogResponse,
   DocumentDetailResponse,
   DocumentIn,
@@ -105,31 +104,25 @@ async function apiFetch<T>(
   return body as T;
 }
 
-export async function indexDocument(doc: DocumentIn): Promise<IndexResponse> {
-  return apiFetch<IndexResponse>('/v1/documents', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(doc),
-  });
-}
-
-/** Multipart upload: field `file` (UTF-8 text or HTML) plus text fields matching the index form. */
+/** Multipart create/replace: field `file` (UTF-8 text or HTML) plus text fields matching the index form. */
 export async function indexDocumentUpload(
   formData: FormData,
 ): Promise<IndexResponse> {
-  return apiFetch<IndexResponse>('/v1/documents/upload', {
+  return apiFetch<IndexResponse>('/v1/documents', {
     method: 'POST',
     body: formData,
   });
 }
 
-export async function indexDocumentsBulk(
-  bulk: BulkIndexIn,
+/** Update metadata; existing document body is unchanged. */
+export async function updateDocument(
+  docId: number,
+  doc: Omit<DocumentIn, 'content' | 'doc_id'>,
 ): Promise<IndexResponse> {
-  return apiFetch<IndexResponse>('/v1/documents/bulk', {
+  return apiFetch<IndexResponse>(`/v1/documents/${docId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(bulk),
+    body: JSON.stringify(doc),
   });
 }
 

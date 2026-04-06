@@ -7,14 +7,14 @@ use std::result::Result;
 use std::sync::{Arc, Mutex};
 
 use crate::auth::AuthUser;
-use crate::error::{ApiError, BULK_CONTENT_EMPTY_MARKER, map_index_error, map_search_error};
+use crate::error::{ApiError, map_index_error, map_search_error};
 use crate::i18n::{Msg, t};
 use crate::locale::Locale;
 use crate::state::AppState;
 
 use inkly_contract::dto::{
-    BulkIndexIn, CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentDetailResponse,
-    DocumentIn, IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
+    CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentDetailResponse, DocumentIn,
+    IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
 };
 use inkly_search::{DocumentRow, SearchError, SearchResultItem, StoredDocument};
 use tracing::{info, warn};
@@ -194,7 +194,7 @@ fn summarize_if_enabled(
 // Shared indexing logic
 // ---------------------------------------------------------------------------
 
-/// Core blocking work shared by `index_document` and `index_document_upload`.
+/// Core blocking work shared by `index_document_upload` and `update_document`.
 /// Callers are responsible for normalizing and validating `input` before calling this.
 async fn perform_index_document(
     state: Arc<AppState>,
@@ -285,20 +285,9 @@ async fn perform_index_document(
 // Route handlers
 // ---------------------------------------------------------------------------
 
-pub async fn index_document(
-    State(state): State<Arc<AppState>>,
-    Extension(user): Extension<AuthUser>,
-    Extension(locale): Extension<Locale>,
-    Json(mut input): Json<DocumentIn>,
-) -> Result<Json<IndexResponse>, ApiError> {
-    input.path = normalize_dir_path(&input.path, locale)?;
-    validate_document(&input, locale)?;
-    perform_index_document(state, user, input, "index_document", locale).await
-}
-
-/// Index a document whose `content` is supplied as a UTF-8 file (`multipart/form-data`, field `file`).
+/// Create or replace a document: `content` as a UTF-8 file (`multipart/form-data`, field `file`).
 ///
-/// Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned),
+/// `POST /v1/documents`. Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned),
 /// `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
 pub async fn index_document_upload(
     State(state): State<Arc<AppState>>,
@@ -391,84 +380,24 @@ pub async fn index_document_upload(
     perform_index_document(state, user, input, "index_document_upload", locale).await
 }
 
-pub async fn index_documents_bulk(
+/// Update document metadata (`title`, `doc_url`, `path`, `note`, `tags`). Existing body text is unchanged.
+///
+/// `POST /v1/documents/{doc_id}`. `doc_id` in the JSON body is ignored; the path parameter is authoritative.
+pub async fn update_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
     Extension(locale): Extension<Locale>,
-    Json(mut input): Json<BulkIndexIn>,
+    Path(doc_id): Path<u64>,
+    Json(mut input): Json<DocumentIn>,
 ) -> Result<Json<IndexResponse>, ApiError> {
-    const MAX_BATCH: usize = 200;
-    if input.documents.is_empty() || input.documents.len() > MAX_BATCH {
-        return Err(ApiError::bad_request(t(locale, Msg::BulkBatchSize)));
+    if doc_id == 0 {
+        return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
     }
-    for doc in &mut input.documents {
-        doc.path = normalize_dir_path(&doc.path, locale)?;
-        validate_document(doc, locale)?;
-    }
-
-    let tenant_id = user.tenant_id;
-    let documents = input.documents;
-    let index = state.index.clone();
-    let summarizer = state.summarizer.clone();
-
-    info!(
-        tenant_id = %tenant_id,
-        user_id = %user.user_id,
-        count = documents.len(),
-        "index_documents_bulk"
-    );
-
-    let (stats, doc_ids) = tokio::task::spawn_blocking(move || {
-        let mut rows: Vec<DocumentRow> = Vec::with_capacity(documents.len());
-        let mut ids: Vec<u64> = Vec::with_capacity(documents.len());
-        for d in documents {
-            let want_auto = use_automatic_doc_id(d.doc_id);
-            let doc_id = if want_auto {
-                index.allocate_doc_id()?
-            } else {
-                d.doc_id.unwrap_or(0)
-            };
-            let (content, existing_summary) = if want_auto {
-                let c = d.content.unwrap_or_default();
-                if c.trim().is_empty() {
-                    return Err(SearchError::InvalidInput(BULK_CONTENT_EMPTY_MARKER.into()));
-                }
-                (c, None)
-            } else {
-                let existing = index.get_document(&tenant_id, doc_id)?;
-                match existing {
-                    Some(e) => (e.content, Some(e.summary)),
-                    None => (String::new(), None),
-                }
-            };
-            ids.push(doc_id);
-            let summary = existing_summary.unwrap_or_else(|| {
-                summarize_if_enabled(&summarizer, &content, "index_documents_bulk")
-            });
-            rows.push(DocumentRow {
-                doc_id,
-                title: d.title,
-                content,
-                doc_url: d.doc_url,
-                summary,
-                tags: d.tags,
-                path: d.path,
-                note: d.note,
-            });
-        }
-        let stats = index.index_documents(&tenant_id, rows)?;
-        Ok::<_, SearchError>((stats, ids))
-    })
-    .await
-    .map_err(|_| ApiError::internal(locale))?
-    .map_err(|e| map_index_error(e, locale))?;
-
-    Ok(Json(IndexResponse {
-        indexed: stats.indexed,
-        deleted: stats.deleted,
-        doc_id: None,
-        doc_ids,
-    }))
+    input.doc_id = Some(doc_id);
+    input.content = None;
+    input.path = normalize_dir_path(&input.path, locale)?;
+    validate_document(&input, locale)?;
+    perform_index_document(state, user, input, "update_document", locale).await
 }
 
 const MAX_SEARCH_TAG_FILTERS: usize = 20;

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-import { indexDocument, indexDocumentUpload } from '../api';
+import { indexDocumentUpload, updateDocument } from '../api';
 import { useI18n } from '../i18n/context';
 import { ensureUtf8File } from '../lib/encoding';
 import {
@@ -8,11 +8,7 @@ import {
   isHtmlFile,
   readFileAsText,
 } from '../lib/htmlToMarkdown';
-import type {
-  DocumentDetailResponse,
-  DocumentIn,
-  IndexResponse,
-} from '../types';
+import type { DocumentDetailResponse, IndexResponse } from '../types';
 
 export type IndexSuccessContext = {
   updatedDocId?: number;
@@ -133,15 +129,13 @@ export function useNewDocumentForm(
     try {
       let res: IndexResponse;
       if (updateId != null) {
-        const payload: DocumentIn = {
-          doc_id: updateId,
+        res = await updateDocument(updateId, {
           title: title.trim(),
           doc_url: docUrl.trim(),
           tags,
           path: path.trim(),
           note,
-        };
-        res = await indexDocument(payload);
+        });
       } else if (contentFile) {
         if (contentFile.size === 0) {
           setFormError(t('form.uploadEmpty'));
@@ -163,15 +157,17 @@ export function useNewDocumentForm(
           setLoading(false);
           return;
         }
-        const payload: DocumentIn = {
-          title: title.trim(),
-          content,
-          doc_url: docUrl.trim(),
-          tags,
-          path: path.trim(),
-          note,
-        };
-        res = await indexDocument(payload);
+        const file = new File([content], 'content.txt', {
+          type: 'text/plain;charset=utf-8',
+        });
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('title', title.trim());
+        fd.append('doc_url', docUrl.trim());
+        fd.append('path', path.trim());
+        fd.append('note', note);
+        fd.append('tags', tagsText);
+        res = await indexDocumentUpload(fd);
       } else {
         setFormError(t('form.uploadOrEditor'));
         setLoading(false);

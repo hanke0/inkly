@@ -8,9 +8,6 @@ use crate::locale::Locale;
 
 use inkly_search::SearchError;
 
-/// Internal marker for empty bulk document content; replaced with a localized message in [`map_index_error`].
-pub(crate) const BULK_CONTENT_EMPTY_MARKER: &str = "inkly::bulk_content_empty";
-
 /// JSON error body for all API failures. `error` is safe to show to users; `code` is stable for clients.
 #[derive(Clone, Debug, Serialize)]
 pub struct ErrorResponse {
@@ -69,9 +66,6 @@ pub fn map_search_error(e: SearchError, locale: Locale) -> ApiError {
 /// Maps search-layer errors for indexing and storage paths (hide raw internal strings).
 pub fn map_index_error(e: SearchError, locale: Locale) -> ApiError {
     match e {
-        SearchError::InvalidInput(msg) if msg == BULK_CONTENT_EMPTY_MARKER => {
-            ApiError::bad_request(t(locale, Msg::BulkContentEmpty).to_string())
-        }
         SearchError::InvalidInput(msg) => {
             tracing::warn!(%msg, "invalid index input");
             ApiError::bad_request(t(locale, Msg::InvalidRequestGeneric).to_string())

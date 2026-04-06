@@ -33,7 +33,6 @@ pub enum Msg {
     NewDocNeedsFilePart,
     UploadedFileUtf8,
 
-    BulkBatchSize,
     BulkContentEmpty,
     NewDocNeedsContent,
 
@@ -151,12 +150,6 @@ pub fn t(locale: Locale, msg: Msg) -> &'static str {
             Locale::ZhHans => "上传的文件须为有效的 UTF-8 文本或 HTML。请转换编码后重试。",
         },
 
-        Msg::BulkBatchSize => match locale {
-            Locale::En => {
-                "Bulk index expects between 1 and 200 documents in one request. Reduce or split the batch and try again."
-            }
-            Locale::ZhHans => "批量索引每次请求需包含 1 至 200 篇文档。请减少或拆分批次后重试。",
-        },
         Msg::BulkContentEmpty => match locale {
             Locale::En => "Content cannot be empty. Add text or HTML before saving.",
             Locale::ZhHans => "正文不能为空。保存前请添加文本或 HTML。",

@@ -17,18 +17,13 @@ pub struct DocumentIn {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BulkIndexIn {
-    pub documents: Vec<DocumentIn>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IndexResponse {
     pub indexed: u64,
     pub deleted: u64,
     /// Single-document index: assigned id when `doc_id` was omitted / null / 0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc_id: Option<u64>,
-    /// Bulk index: final document id for each item, in request order (includes explicit ids).
+    /// Reserved; always empty in current API responses.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub doc_ids: Vec<u64>,
 }

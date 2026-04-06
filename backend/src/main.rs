@@ -18,8 +18,8 @@ use clap::Parser;
 use inkly_search::{IndexManager, SearchError};
 use inkly_summarize::{Summarizer, SummarizerConfig};
 use routes::{
-    catalog, delete_document, get_document, healthz, index_document, index_document_upload,
-    index_documents_bulk, search, session,
+    catalog, delete_document, get_document, healthz, index_document_upload, search, session,
+    update_document,
 };
 use state::AppState;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
@@ -191,22 +191,15 @@ async fn run_server() {
     let app = Router::new()
         .route("/healthz", get(healthz))
         .route(
-            "/v1/documents/upload",
-            post(index_document_upload).layer(auth_layer.clone()),
-        )
-        .route(
-            "/v1/documents/bulk",
-            post(index_documents_bulk).layer(auth_layer.clone()),
-        )
-        .route(
             "/v1/documents/{doc_id}",
             get(get_document)
+                .post(update_document)
                 .delete(delete_document)
                 .layer(auth_layer.clone()),
         )
         .route(
             "/v1/documents",
-            post(index_document).layer(auth_layer.clone()),
+            post(index_document_upload).layer(auth_layer.clone()),
         )
         .route("/v1/catalog", get(catalog).layer(auth_layer.clone()))
         .route("/v1/search", get(search).layer(auth_layer.clone()))

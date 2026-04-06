@@ -10,16 +10,12 @@ export type DocumentIn = {
   note: string;
 };
 
-export type BulkIndexIn = {
-  documents: DocumentIn[];
-};
-
 export type IndexResponse = {
   indexed: number;
   deleted: number;
   /** Single-document index: assigned id when `doc_id` was omitted. */
   doc_id?: number;
-  /** Bulk index: final ids in request order. */
+  /** Reserved; empty in current API responses. */
   doc_ids?: number[];
 };
 
