@@ -479,7 +479,10 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
 
   return (
     <Fragment>
-      <form className="flex flex-col gap-3 font-inkly-read-ui" onSubmit={submit}>
+      <form
+        className="flex flex-col gap-3 font-inkly-read-ui"
+        onSubmit={submit}
+      >
         {formError ? (
           <div
             className="rounded-md border border-red-200/90 bg-red-50/90 px-2.5 py-1.5 text-xs leading-snug text-red-800"
