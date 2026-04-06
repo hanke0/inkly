@@ -185,17 +185,12 @@ async fn perform_index_document(
     let index = state.index.clone();
     let defer_summary_to_queue = want_auto_id && state.summary_queue.is_some();
 
-    if input.content.trim().is_empty() {
-        return Err(ApiError::bad_request(t(locale, Msg::BulkContentEmpty)));
-    }
-    let content = input.content;
-
     let doc = DocumentRow {
         doc_id: 0,
         title: input.title,
-        content: content.clone(),
+        content: input.content,
         doc_url: input.doc_url,
-        summary: String::new(),
+        summary: existing_summary.unwrap_or_default(),
         tags: input.tags,
         path: input.path,
         note: input.note,
@@ -209,19 +204,7 @@ async fn perform_index_document(
             requested_doc_id.unwrap_or(0)
         };
         let assigned = want_auto_id.then_some(doc_id);
-        let summary = if defer_summary_to_queue {
-            String::new()
-        } else {
-            existing_summary.unwrap_or_default()
-        };
-        let stats = index.index_document(
-            &tenant_for_index,
-            DocumentRow {
-                doc_id,
-                summary,
-                ..doc
-            },
-        )?;
+        let stats = index.index_document(&tenant_for_index, doc)?;
         Ok::<_, SearchError>((stats, assigned))
     })
     .await
@@ -277,9 +260,8 @@ async fn perform_index_document(
 
 async fn parse_document_multipart(
     mut multipart: Multipart,
-    require_file: bool,
     locale: Locale,
-) -> Result<(DocumentIn, bool), ApiError> {
+) -> Result<DocumentIn, ApiError> {
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut title = String::new();
     let mut doc_url = String::new();
@@ -313,15 +295,11 @@ async fn parse_document_multipart(
     }
 
     let content = match file_bytes {
-        Some(bytes) => (
-            String::from_utf8(bytes)
-                .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
-            true,
-        ),
-        None if require_file => {
-            return Err(ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart)));
+        Some(bytes) => String::from_utf8(bytes)
+            .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
+        None => {
+            return Err(ApiError::bad_request(t(locale, Msg::DocNeedsFilePart)));
         }
-        None => (String::new(), false),
     };
 
     let tags: Vec<String> = tags_raw
@@ -330,18 +308,18 @@ async fn parse_document_multipart(
         .filter(|t| !t.is_empty())
         .collect();
 
-    Ok((
-        DocumentIn {
-            doc_id: None,
-            title: title.trim().to_string(),
-            content: content.0,
-            doc_url: doc_url.trim().to_string(),
-            tags,
-            path: path.trim().to_string(),
-            note,
-        },
-        content.1,
-    ))
+    let mut input = DocumentIn {
+        doc_id: None,
+        title: title.trim().to_string(),
+        content,
+        doc_url: doc_url.trim().to_string(),
+        tags,
+        path: path.trim().to_string(),
+        note,
+    };
+    input.path = normalize_dir_path(&input.path, locale)?;
+    validate_document(&input, locale)?;
+    Ok(input)
 }
 
 /// Create a new document: `content` as a UTF-8 file (`multipart/form-data`, field `file`).
@@ -354,10 +332,7 @@ pub async fn index_document_upload(
     Extension(locale): Extension<Locale>,
     multipart: Multipart,
 ) -> Result<Json<IndexResponse>, ApiError> {
-    let (mut input, _has_file) = parse_document_multipart(multipart, true, locale).await?;
-
-    input.path = normalize_dir_path(&input.path, locale)?;
-    validate_document(&input, locale)?;
+    let input = parse_document_multipart(multipart, locale).await?;
 
     perform_index_document(state, user, input, None, locale).await
 }
@@ -365,7 +340,7 @@ pub async fn index_document_upload(
 /// Update document fields via multipart form-data.
 ///
 /// `POST /v1/documents/{doc_id}`. `doc_id` from path is authoritative.
-/// Text parts: `title`, `doc_url`, `path`, `note`, `tags` (comma-separated). Optional `file` replaces content.
+/// Text parts: `title`, `doc_url`, `path`, `note`, `tags` (comma-separated). `file` is required.
 pub async fn update_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
@@ -376,7 +351,7 @@ pub async fn update_document(
     if doc_id == 0 {
         return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
     }
-    let (mut input, has_file) = parse_document_multipart(multipart, false, locale).await?;
+    let mut input = parse_document_multipart(multipart, locale).await?;
     let tenant_id = user.tenant_id.clone();
     let index = state.index.clone();
     let existing = tokio::task::spawn_blocking(move || index.get_document(&tenant_id, doc_id))
@@ -384,12 +359,7 @@ pub async fn update_document(
         .map_err(|_| ApiError::internal(locale))?
         .map_err(|e| map_index_error(e, locale))?
         .ok_or_else(|| ApiError::not_found(locale))?;
-    if !has_file {
-        input.content = existing.content.clone();
-    }
     input.doc_id = Some(doc_id);
-    input.path = normalize_dir_path(&input.path, locale)?;
-    validate_document(&input, locale)?;
     perform_index_document(state, user, input, Some(existing.summary), locale).await
 }
 

@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { indexDocumentUpload, updateDocument } from '../api';
 import { useI18n } from '../i18n/context';
 import { ensureUtf8File } from '../lib/encoding';
+import { firstLineProbe, looksLikeHtml } from '../lib/documentContent';
 import {
   guessUploadFileMimeType,
-  htmlToMarkdown,
   htmlToMarkdownInlineImages,
   isHtmlFile,
   isTextLikeUploadFile,
@@ -181,10 +181,20 @@ export function useNewDocumentForm(
   function prepareEdit(d: DocumentDetailResponse) {
     setFormError('');
     setEditingDocId(d.doc_id);
-    setContentMode('editor');
+    const raw = d.content;
+    const htmlLike = looksLikeHtml(firstLineProbe(raw));
+    setContentMode(htmlLike ? 'upload' : 'editor');
     setTitle(d.title);
-    setContent(d.content);
+    setContent(htmlLike ? '' : raw);
     clearFileInput();
+    if (htmlLike) {
+      const file = new File([raw], `document-${d.doc_id}.html`, {
+        type: 'text/html;charset=utf-8',
+      });
+      setContentFile(file);
+      setHtmlUploadText(raw);
+      setHtmlUploadLoading(false);
+    }
     setConvertedFromHtml(false);
     setConverting(false);
     setDocUrl(d.doc_url);
@@ -215,21 +225,9 @@ export function useNewDocumentForm(
         fd.append('note', note);
         fd.append('tags', tagsText);
       };
-      if (updateId != null) {
-        if (!content.trim()) {
-          setFormError(t('form.addContentOrUpload'));
-          setLoading(false);
-          return;
-        }
-        const file = new File([content], 'content.txt', {
-          type: 'text/plain;charset=utf-8',
-        });
-        const fd = new FormData();
-        fd.append('file', file);
-        appendCommonFields(fd);
-        res = await updateDocument(updateId, fd);
-      } else if (contentFile) {
-        let fileForUpload = contentFile;
+      let fileForUpload: File | null = null;
+      if (contentFile) {
+        fileForUpload = contentFile;
         if (isTextLikeUploadFile(contentFile)) {
           let raw = htmlUploadText;
           if (raw === null) {
@@ -249,34 +247,33 @@ export function useNewDocumentForm(
             type: mime,
           });
         }
-        if (fileForUpload.size === 0) {
-          setFormError(t('form.uploadEmpty'));
-          setLoading(false);
-          return;
-        }
-        const utf8File = await ensureUtf8File(fileForUpload);
-        const fd = new FormData();
-        fd.append('file', utf8File);
-        appendCommonFields(fd);
-        res = await indexDocumentUpload(fd);
       } else if (contentMode === 'editor') {
         if (!content.trim()) {
           setFormError(t('form.addContentOrUpload'));
           setLoading(false);
           return;
         }
-        const file = new File([content], 'content.txt', {
+        fileForUpload = new File([content], 'content.txt', {
           type: 'text/plain;charset=utf-8',
         });
-        const fd = new FormData();
-        fd.append('file', file);
-        appendCommonFields(fd);
-        res = await indexDocumentUpload(fd);
       } else {
         setFormError(t('form.uploadOrEditor'));
         setLoading(false);
         return;
       }
+      if (!fileForUpload || fileForUpload.size === 0) {
+        setFormError(t('form.uploadEmpty'));
+        setLoading(false);
+        return;
+      }
+      const utf8File = await ensureUtf8File(fileForUpload);
+      const fd = new FormData();
+      fd.append('file', utf8File);
+      appendCommonFields(fd);
+      res =
+        updateId != null
+          ? await updateDocument(updateId, fd)
+          : await indexDocumentUpload(fd);
       onSuccessRef.current(
         res,
         updateId != null ? { updatedDocId: updateId } : {},

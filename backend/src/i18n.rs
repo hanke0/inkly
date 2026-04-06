@@ -28,7 +28,7 @@ pub enum Msg {
     MultipartReadFailed,
     MultipartMultipleFile,
 
-    NewDocNeedsFilePart,
+    DocNeedsFilePart,
     UploadedFileUtf8,
 
     BulkContentEmpty,
@@ -126,12 +126,12 @@ pub fn t(locale: Locale, msg: Msg) -> &'static str {
             Locale::En => "The form contains more than one `file` field. Send a single file part.",
             Locale::ZhHans => "表单中包含多个 `file` 字段。请只发送一个文件部分。",
         },
-        Msg::NewDocNeedsFilePart => match locale {
+        Msg::DocNeedsFilePart => match locale {
             Locale::En => {
-                "New documents need a `file` part in the multipart body. Add the file field and try again."
+                "This request needs a `file` part in the multipart body. Add the file field and try again."
             }
             Locale::ZhHans => {
-                "新建文档需要在 multipart 正文中提供 `file` 部分。请添加文件字段后重试。"
+                "该请求需要在 multipart 正文中提供 `file` 部分。请添加文件字段后重试。"
             }
         },
         Msg::UploadedFileUtf8 => match locale {
