@@ -185,7 +185,7 @@ async fn perform_index_document(
     let index = state.index.clone();
     let defer_summary_to_queue = want_auto_id && state.summary_queue.is_some();
 
-    let doc = DocumentRow {
+    let mut doc = DocumentRow {
         doc_id: 0,
         title: input.title,
         content: input.content,
@@ -203,6 +203,7 @@ async fn perform_index_document(
         } else {
             requested_doc_id.unwrap_or(0)
         };
+        doc.doc_id = doc_id;
         let assigned = want_auto_id.then_some(doc_id);
         let stats = index.index_document(&tenant_for_index, doc)?;
         Ok::<_, SearchError>((stats, assigned))

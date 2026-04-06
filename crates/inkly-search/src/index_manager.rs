@@ -385,6 +385,11 @@ impl IndexManager {
         if tenant_id.trim().is_empty() {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
+        if doc.doc_id == 0 {
+            return Err(
+                SearchError::InvalidInput("doc_id is 0".into())
+            )
+        }
 
         let now = Self::now_unix_seconds()?;
 
