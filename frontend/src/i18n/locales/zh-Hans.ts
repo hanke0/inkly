@@ -57,6 +57,7 @@ export const messages: Record<MessageKey, string> = {
   'form.textUploadEditHint':
     '「应用」会将修改保存到待上传内容；「取消」关闭弹窗且不保存本弹窗内的修改。',
   'form.htmlCleanupApply': '应用',
+  'form.htmlCleanupApplyAndConvert': '应用并转为 Markdown',
   'form.htmlCleanupCancel': '取消',
   'form.docUrl': '来源 URL',
   'form.pageTitlePlaceholder': '页面标题',

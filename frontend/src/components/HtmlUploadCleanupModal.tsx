@@ -9,6 +9,8 @@ type HtmlUploadCleanupModalProps = {
   onClose: () => void;
   initialHtml: string;
   onApply: (html: string) => void;
+  onApplyAndConvert?: (html: string) => Promise<void> | void;
+  converting?: boolean;
   onResetFromFile: () => Promise<string | null>;
 };
 
@@ -17,6 +19,8 @@ export function HtmlUploadCleanupModal({
   onClose,
   initialHtml,
   onApply,
+  onApplyAndConvert,
+  converting = false,
   onResetFromFile,
 }: HtmlUploadCleanupModalProps) {
   const { t } = useI18n();
@@ -40,6 +44,13 @@ export function HtmlUploadCleanupModal({
   function handleApply() {
     onApply(draft);
     onClose();
+  }
+
+  async function handleApplyAndConvert() {
+    if (!onApplyAndConvert) {
+      return;
+    }
+    await onApplyAndConvert(draft);
   }
 
   async function handleReset() {
@@ -96,13 +107,25 @@ export function HtmlUploadCleanupModal({
         <button
           type="button"
           onClick={onClose}
+          disabled={converting}
           className="rounded-lg border border-inkly-border/90 bg-white px-3 py-1.5 text-sm font-medium text-inkly-ink-soft shadow-sm transition hover:border-inkly-accent/40 hover:text-inkly-ink"
         >
           {t('form.htmlCleanupCancel')}
         </button>
         <button
           type="button"
+          onClick={handleApplyAndConvert}
+          disabled={converting}
+          className="rounded-lg border border-inkly-accent/60 bg-inkly-accent/10 px-3 py-1.5 text-sm font-medium text-inkly-accent shadow-sm transition hover:bg-inkly-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {converting
+            ? t('form.converting')
+            : t('form.htmlCleanupApplyAndConvert')}
+        </button>
+        <button
+          type="button"
           onClick={handleApply}
+          disabled={converting}
           className="rounded-lg bg-inkly-accent px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-inkly-accent-hover"
         >
           {t('form.htmlCleanupApply')}

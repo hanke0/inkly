@@ -58,6 +58,7 @@ export const messages = {
   'form.textUploadEditHint':
     'Apply saves your edits to the upload; Cancel closes without saving this dialog.',
   'form.htmlCleanupApply': 'Apply',
+  'form.htmlCleanupApplyAndConvert': 'Apply and convert to Markdown',
   'form.htmlCleanupCancel': 'Cancel',
   'form.docUrl': 'Source URL',
   'form.pageTitlePlaceholder': 'Page title',

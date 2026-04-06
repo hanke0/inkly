@@ -127,24 +127,36 @@ export function useNewDocumentForm(
     setTextUploadEditModalOpen(false);
   }
 
-  async function convertHtmlFile() {
-    if (!contentFile || !isHtmlFile(contentFile)) return;
+  async function convertEditedHtmlToMarkdown(
+    rawHtml: string,
+  ): Promise<boolean> {
     setConverting(true);
     setFormError('');
+    try {
+      const md = await htmlToMarkdownInlineImages(rawHtml);
+      setContent(md);
+      setConvertedFromHtml(true);
+      clearFileInput();
+      setContentMode('editor');
+      return true;
+    } catch {
+      setFormError(t('form.convertHtmlFailed'));
+      return false;
+    } finally {
+      setConverting(false);
+    }
+  }
+
+  async function convertHtmlFile() {
+    if (!contentFile || !isHtmlFile(contentFile)) return;
     try {
       const raw =
         htmlUploadText !== null
           ? htmlUploadText
           : await readFileAsText(contentFile);
-      const md = await htmlToMarkdownInlineImages(raw);
-      setContent(md);
-      setConvertedFromHtml(true);
-      clearFileInput();
-      setContentMode('editor');
+      await convertEditedHtmlToMarkdown(raw);
     } catch {
       setFormError(t('form.convertHtmlFailed'));
-    } finally {
-      setConverting(false);
     }
   }
 
@@ -299,6 +311,7 @@ export function useNewDocumentForm(
     textUploadEditModalOpen,
     openTextUploadEditModal,
     closeTextUploadEditModal,
+    convertEditedHtmlToMarkdown,
     convertHtmlFile,
     converting,
     convertedFromHtml,

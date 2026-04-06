@@ -464,6 +464,8 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
     htmlUploadText,
     setHtmlUploadText,
     resetHtmlUploadFromFile,
+    convertEditedHtmlToMarkdown,
+    converting,
   } = form;
 
   const isEditor = !isEditing && contentMode === 'editor';
@@ -715,6 +717,13 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
         onApply={(html) => {
           setHtmlUploadText(html);
         }}
+        onApplyAndConvert={async (html) => {
+          const ok = await convertEditedHtmlToMarkdown(html);
+          if (ok) {
+            closeHtmlCleanupModal();
+          }
+        }}
+        converting={converting}
         onResetFromFile={resetHtmlUploadFromFile}
       />
       <TextUploadEditModal
