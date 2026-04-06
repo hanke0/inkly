@@ -285,10 +285,10 @@ async fn perform_index_document(
 // Route handlers
 // ---------------------------------------------------------------------------
 
-/// Create or replace a document: `content` as a UTF-8 file (`multipart/form-data`, field `file`).
+/// Create a new document: `content` as a UTF-8 file (`multipart/form-data`, field `file`).
 ///
-/// `POST /v1/documents`. Other fields match `DocumentIn` as text parts: optional `doc_id` (omit or `0` for server-assigned),
-/// `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
+/// `POST /v1/documents`. Text parts: `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
+/// The server always assigns a new `doc_id` (any extra parts such as `doc_id` are ignored).
 pub async fn index_document_upload(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
@@ -296,7 +296,6 @@ pub async fn index_document_upload(
     mut multipart: Multipart,
 ) -> Result<Json<IndexResponse>, ApiError> {
     let mut file_bytes: Option<Vec<u8>> = None;
-    let mut doc_id_raw: Option<String> = None;
     let mut title = String::new();
     let mut doc_url = String::new();
     let mut path = String::new();
@@ -307,8 +306,8 @@ pub async fn index_document_upload(
         warn!(error = %e, "multipart field read failed");
         ApiError::bad_request(t(locale, Msg::MultipartReadFailed))
     })? {
-        let name = field.name().unwrap_or("").to_string();
-        match name.as_str() {
+        let name = field.name().unwrap_or("");
+        match name {
             "file" => {
                 if file_bytes.is_some() {
                     return Err(ApiError::bad_request(t(locale, Msg::MultipartMultipleFile)));
@@ -319,15 +318,6 @@ pub async fn index_document_upload(
                 })?;
                 file_bytes = Some(bytes.to_vec());
             }
-            "doc_id" => {
-                if doc_id_raw.is_some() {
-                    return Err(ApiError::bad_request(t(
-                        locale,
-                        Msg::MultipartMultipleDocId,
-                    )));
-                }
-                doc_id_raw = Some(multipart_text(field, "doc_id", locale).await?);
-            }
             "title" => title = multipart_text(field, "title", locale).await?,
             "doc_url" => doc_url = multipart_text(field, "doc_url", locale).await?,
             "path" => path = multipart_text(field, "path", locale).await?,
@@ -337,26 +327,12 @@ pub async fn index_document_upload(
         }
     }
 
-    let doc_id = match doc_id_raw.as_deref().map(str::trim) {
-        None | Some("") => None,
-        Some(s) => {
-            let n = s
-                .parse::<u64>()
-                .map_err(|_| ApiError::bad_request(t(locale, Msg::DocIdMustBeNumber)))?;
-            Some(n)
-        }
-    };
-
-    let content = if use_automatic_doc_id(doc_id) {
-        let bytes =
-            file_bytes.ok_or_else(|| ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart)))?;
-        Some(
-            String::from_utf8(bytes)
-                .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
-        )
-    } else {
-        None
-    };
+    let bytes =
+        file_bytes.ok_or_else(|| ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart)))?;
+    let content = Some(
+        String::from_utf8(bytes)
+            .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
+    );
 
     let tags: Vec<String> = tags_raw
         .split(',')
@@ -365,7 +341,7 @@ pub async fn index_document_upload(
         .collect();
 
     let mut input = DocumentIn {
-        doc_id,
+        doc_id: None,
         title: title.trim().to_string(),
         content,
         doc_url: doc_url.trim().to_string(),

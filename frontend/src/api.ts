@@ -104,7 +104,7 @@ async function apiFetch<T>(
   return body as T;
 }
 
-/** Multipart create/replace: field `file` (UTF-8 text or HTML) plus text fields matching the index form. */
+/** Multipart create: field `file` (UTF-8 text or HTML); server always assigns `doc_id`. */
 export async function indexDocumentUpload(
   formData: FormData,
 ): Promise<IndexResponse> {

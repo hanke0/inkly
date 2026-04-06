@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentIn {
-    /// Set explicitly to update/replace that id. Omit, `null`, or `0` for a server-assigned id.
+    /// Explicit id for update flows (`POST /v1/documents/{doc_id}` sets this from the path). Ignored on multipart create (`POST /v1/documents`), which always gets a new id.
     #[serde(default)]
     pub doc_id: Option<u64>,
     pub title: String,

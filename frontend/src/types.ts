@@ -1,5 +1,5 @@
 export type DocumentIn = {
-  /** Omit for server-assigned id. */
+  /** Not used for `POST /v1/documents` multipart (server assigns id). Optional in JSON for other flows. */
   doc_id?: number;
   title: string;
   /** Required for new documents. Omit on updates (existing content is preserved). */

@@ -27,9 +27,7 @@ pub enum Msg {
 
     MultipartReadFailed,
     MultipartMultipleFile,
-    MultipartMultipleDocId,
 
-    DocIdMustBeNumber,
     NewDocNeedsFilePart,
     UploadedFileUtf8,
 
@@ -121,19 +119,6 @@ pub fn t(locale: Locale, msg: Msg) -> &'static str {
         Msg::MultipartMultipleFile => match locale {
             Locale::En => "The form contains more than one `file` field. Send a single file part.",
             Locale::ZhHans => "表单中包含多个 `file` 字段。请只发送一个文件部分。",
-        },
-        Msg::MultipartMultipleDocId => match locale {
-            Locale::En => {
-                "The form contains more than one `doc_id` field. Send a single doc_id value."
-            }
-            Locale::ZhHans => "表单中包含多个 `doc_id` 字段。请只发送一个 doc_id 值。",
-        },
-
-        Msg::DocIdMustBeNumber => match locale {
-            Locale::En => {
-                "`doc_id` must be a non-negative whole number (or omit / use 0 for a new document)."
-            }
-            Locale::ZhHans => "`doc_id` 必须是非负整数（新建文档可省略或使用 0）。",
         },
         Msg::NewDocNeedsFilePart => match locale {
             Locale::En => {
