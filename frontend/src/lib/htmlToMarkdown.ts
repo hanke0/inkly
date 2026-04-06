@@ -1,4 +1,5 @@
 import TurndownService from 'turndown';
+import { gfm } from 'turndown-plugin-gfm';
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -6,6 +7,7 @@ const turndown = new TurndownService({
   bulletListMarker: '-',
   emDelimiter: '*',
 });
+turndown.use(gfm);
 
 turndown.addRule('strikethrough', {
   filter: ['del', 's'],
