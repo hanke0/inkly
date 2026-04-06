@@ -6,6 +6,7 @@ import { ensureUtf8File } from '../lib/encoding';
 import {
   guessUploadFileMimeType,
   htmlToMarkdown,
+  htmlToMarkdownInlineImages,
   isHtmlFile,
   isTextLikeUploadFile,
   readFileAsText,
@@ -135,7 +136,7 @@ export function useNewDocumentForm(
         htmlUploadText !== null
           ? htmlUploadText
           : await readFileAsText(contentFile);
-      const md = htmlToMarkdown(raw);
+      const md = await htmlToMarkdownInlineImages(raw);
       setContent(md);
       setConvertedFromHtml(true);
       clearFileInput();

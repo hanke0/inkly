@@ -99,6 +99,8 @@ function isProbablyFullHtmlDocument(raw: string): boolean {
 /** KaTeX can emit SVG; keep SVG profile so equations survive sanitization. */
 const purifyConfig: Config = {
   USE_PROFILES: { html: true, svg: true },
+  // Allow Markdown images using inlined `data:image/...` URIs.
+  ADD_DATA_URI_TAGS: ['img'],
 };
 
 function sanitizeHtml(dirty: string): string {
