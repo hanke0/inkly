@@ -32,7 +32,6 @@ pub enum Msg {
     UploadedFileUtf8,
 
     BulkContentEmpty,
-    NewDocNeedsContent,
 
     SearchTooManyTags,
     SearchNeedsCriteria,
@@ -146,13 +145,6 @@ pub fn t(locale: Locale, msg: Msg) -> &'static str {
             Locale::En => "Content cannot be empty. Add text or HTML before saving.",
             Locale::ZhHans => "正文不能为空。保存前请添加文本或 HTML。",
         },
-        Msg::NewDocNeedsContent => match locale {
-            Locale::En => {
-                "New documents require body content. Paste or type content in the editor, then save."
-            }
-            Locale::ZhHans => "新建文档需要正文。请在编辑器中粘贴或输入内容后保存。",
-        },
-
         Msg::SearchTooManyTags => match locale {
             Locale::En => {
                 "Too many tag filters in this search. Remove some tag filters (comma-separated) and try again."

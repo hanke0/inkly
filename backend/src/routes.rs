@@ -1,10 +1,11 @@
 use axum::Extension;
-use axum::extract::{Json, Multipart, Path, Query, State};
+use axum::Json;
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Serialize;
 use std::result::Result;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::auth::AuthUser;
 use crate::error::{ApiError, map_index_error, map_search_error};
@@ -157,42 +158,6 @@ async fn multipart_text(
 }
 
 // ---------------------------------------------------------------------------
-// Summarization
-// ---------------------------------------------------------------------------
-
-/// When summarization is off or the lock fails, returns an empty string (indexing still succeeds).
-fn summarize_if_enabled(
-    summarizer: &Option<Arc<Mutex<inkly_summarize::Summarizer>>>,
-    content: &str,
-    op: &'static str,
-) -> String {
-    let Some(sm) = summarizer else {
-        return String::new();
-    };
-    let mut summary = String::new();
-    match sm.lock() {
-        Ok(mut guard) => {
-            let t = std::time::Instant::now();
-            match guard.summarize(content) {
-                Ok(s) => {
-                    let elapsed = t.elapsed();
-                    tracing::info!(
-                        op,
-                        elapsed_ms = elapsed.as_millis(),
-                        summary_chars = s.len(),
-                        "summarize completed"
-                    );
-                    summary = s;
-                }
-                Err(e) => warn!(error = %e, op, "summarizer failed"),
-            }
-        }
-        Err(_) => warn!(op, "summarizer lock poisoned"),
-    }
-    summary
-}
-
-// ---------------------------------------------------------------------------
 // Shared indexing logic
 // ---------------------------------------------------------------------------
 
@@ -202,7 +167,7 @@ async fn perform_index_document(
     state: Arc<AppState>,
     user: AuthUser,
     input: DocumentIn,
-    op: &'static str,
+    existing_summary: Option<String>,
     locale: Locale,
 ) -> Result<Json<IndexResponse>, ApiError> {
     let tenant_id = user.tenant_id;
@@ -214,33 +179,16 @@ async fn perform_index_document(
         user_id = %user.user_id,
         ?requested_doc_id,
         want_auto_id,
-        op,
         "index_document"
     );
 
     let index = state.index.clone();
-    let summarizer = state.summarizer.clone();
-    let defer_summary_to_queue = want_auto_id && summarizer.is_some();
+    let defer_summary_to_queue = want_auto_id && state.summary_queue.is_some();
 
-    let (content, existing_summary) = if want_auto_id {
-        let c = input
-            .content
-            .ok_or_else(|| ApiError::bad_request(t(locale, Msg::NewDocNeedsContent)))?;
-        if c.trim().is_empty() {
-            return Err(ApiError::bad_request(t(locale, Msg::BulkContentEmpty)));
-        }
-        (c, None)
-    } else {
-        let existing_doc_id = requested_doc_id.unwrap_or(0);
-        let idx = index.clone();
-        let tid = tenant_id.clone();
-        let existing = tokio::task::spawn_blocking(move || idx.get_document(&tid, existing_doc_id))
-            .await
-            .map_err(|_| ApiError::internal(locale))?
-            .map_err(|e| map_index_error(e, locale))?
-            .ok_or_else(|| ApiError::not_found(locale))?;
-        (existing.content, Some(existing.summary))
-    };
+    if input.content.trim().is_empty() {
+        return Err(ApiError::bad_request(t(locale, Msg::BulkContentEmpty)));
+    }
+    let content = input.content;
 
     let doc = DocumentRow {
         doc_id: 0,
@@ -264,7 +212,7 @@ async fn perform_index_document(
         let summary = if defer_summary_to_queue {
             String::new()
         } else {
-            existing_summary.unwrap_or_else(|| summarize_if_enabled(&summarizer, &content, op))
+            existing_summary.unwrap_or_default()
         };
         let stats = index.index_document(
             &tenant_for_index,
@@ -283,7 +231,7 @@ async fn perform_index_document(
     if defer_summary_to_queue {
         if let Some(q) = state.summary_queue.as_ref() {
             let Some(doc_id) = assigned_doc_id else {
-                warn!(tenant_id = %tenant_id, op, "auto id missing after index; skip summary enqueue");
+                warn!(tenant_id = %tenant_id, "auto id missing after index; skip summary enqueue");
                 return Ok(Json(IndexResponse {
                     indexed: stats.indexed,
                     deleted: stats.deleted,
@@ -293,17 +241,16 @@ async fn perform_index_document(
             };
             match q.enqueue(&tenant_id, doc_id) {
                 Ok(EnqueueOutcome::Enqueued) => {
-                    info!(tenant_id = %tenant_id, doc_id, op, "summary job enqueued");
+                    info!(tenant_id = %tenant_id, doc_id, "summary job enqueued");
                 }
                 Ok(EnqueueOutcome::AlreadyQueued) => {
-                    warn!(tenant_id = %tenant_id, doc_id, op, "summary already queued after new doc");
+                    warn!(tenant_id = %tenant_id, doc_id, "summary already queued after new doc");
                 }
                 Err(e) => {
                     warn!(
                         error = %e,
                         tenant_id = %tenant_id,
                         doc_id,
-                        op,
                         "summary enqueue failed; document saved without queued summary"
                     );
                 }
@@ -311,7 +258,6 @@ async fn perform_index_document(
         } else {
             warn!(
                 tenant_id = %tenant_id,
-                op,
                 "summarizer enabled but summary queue missing; document saved without queued summary"
             );
         }
@@ -329,16 +275,11 @@ async fn perform_index_document(
 // Route handlers
 // ---------------------------------------------------------------------------
 
-/// Create a new document: `content` as a UTF-8 file (`multipart/form-data`, field `file`).
-///
-/// `POST /v1/documents`. Text parts: `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
-/// The server always assigns a new `doc_id` (any extra parts such as `doc_id` are ignored).
-pub async fn index_document_upload(
-    State(state): State<Arc<AppState>>,
-    Extension(user): Extension<AuthUser>,
-    Extension(locale): Extension<Locale>,
+async fn parse_document_multipart(
     mut multipart: Multipart,
-) -> Result<Json<IndexResponse>, ApiError> {
+    require_file: bool,
+    locale: Locale,
+) -> Result<(DocumentIn, bool), ApiError> {
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut title = String::new();
     let mut doc_url = String::new();
@@ -371,12 +312,17 @@ pub async fn index_document_upload(
         }
     }
 
-    let bytes =
-        file_bytes.ok_or_else(|| ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart)))?;
-    let content = Some(
-        String::from_utf8(bytes)
-            .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
-    );
+    let content = match file_bytes {
+        Some(bytes) => (
+            String::from_utf8(bytes)
+                .map_err(|_| ApiError::bad_request(t(locale, Msg::UploadedFileUtf8)))?,
+            true,
+        ),
+        None if require_file => {
+            return Err(ApiError::bad_request(t(locale, Msg::NewDocNeedsFilePart)));
+        }
+        None => (String::new(), false),
+    };
 
     let tags: Vec<String> = tags_raw
         .split(',')
@@ -384,40 +330,67 @@ pub async fn index_document_upload(
         .filter(|t| !t.is_empty())
         .collect();
 
-    let mut input = DocumentIn {
-        doc_id: None,
-        title: title.trim().to_string(),
-        content,
-        doc_url: doc_url.trim().to_string(),
-        tags,
-        path: path.trim().to_string(),
-        note,
-    };
+    Ok((
+        DocumentIn {
+            doc_id: None,
+            title: title.trim().to_string(),
+            content: content.0,
+            doc_url: doc_url.trim().to_string(),
+            tags,
+            path: path.trim().to_string(),
+            note,
+        },
+        content.1,
+    ))
+}
+
+/// Create a new document: `content` as a UTF-8 file (`multipart/form-data`, field `file`).
+///
+/// `POST /v1/documents`. Text parts: `title`, `doc_url`, `path`, `note`, `tags` (comma-separated).
+/// The server always assigns a new `doc_id` (any extra parts such as `doc_id` are ignored).
+pub async fn index_document_upload(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthUser>,
+    Extension(locale): Extension<Locale>,
+    multipart: Multipart,
+) -> Result<Json<IndexResponse>, ApiError> {
+    let (mut input, _has_file) = parse_document_multipart(multipart, true, locale).await?;
 
     input.path = normalize_dir_path(&input.path, locale)?;
     validate_document(&input, locale)?;
 
-    perform_index_document(state, user, input, "index_document_upload", locale).await
+    perform_index_document(state, user, input, None, locale).await
 }
 
-/// Update document metadata (`title`, `doc_url`, `path`, `note`, `tags`). Existing body text is unchanged.
+/// Update document fields via multipart form-data.
 ///
-/// `POST /v1/documents/{doc_id}`. `doc_id` in the JSON body is ignored; the path parameter is authoritative.
+/// `POST /v1/documents/{doc_id}`. `doc_id` from path is authoritative.
+/// Text parts: `title`, `doc_url`, `path`, `note`, `tags` (comma-separated). Optional `file` replaces content.
 pub async fn update_document(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthUser>,
     Extension(locale): Extension<Locale>,
     Path(doc_id): Path<u64>,
-    Json(mut input): Json<DocumentIn>,
+    multipart: Multipart,
 ) -> Result<Json<IndexResponse>, ApiError> {
     if doc_id == 0 {
         return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
     }
+    let (mut input, has_file) = parse_document_multipart(multipart, false, locale).await?;
+    let tenant_id = user.tenant_id.clone();
+    let index = state.index.clone();
+    let existing = tokio::task::spawn_blocking(move || index.get_document(&tenant_id, doc_id))
+        .await
+        .map_err(|_| ApiError::internal(locale))?
+        .map_err(|e| map_index_error(e, locale))?
+        .ok_or_else(|| ApiError::not_found(locale))?;
+    if !has_file {
+        input.content = existing.content.clone();
+    }
     input.doc_id = Some(doc_id);
-    input.content = None;
     input.path = normalize_dir_path(&input.path, locale)?;
     validate_document(&input, locale)?;
-    perform_index_document(state, user, input, "update_document", locale).await
+    perform_index_document(state, user, input, Some(existing.summary), locale).await
 }
 
 /// Queue async regeneration of the document summary (or report that it is already queued).

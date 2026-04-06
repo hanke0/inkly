@@ -1,7 +1,6 @@
 import type {
   CatalogResponse,
   DocumentDetailResponse,
-  DocumentIn,
   IndexResponse,
   SearchQuery,
   SearchResponse,
@@ -115,15 +114,14 @@ export async function indexDocumentUpload(
   });
 }
 
-/** Update metadata; existing document body is unchanged. */
+/** Update document fields via multipart form-data. */
 export async function updateDocument(
   docId: number,
-  doc: Omit<DocumentIn, 'content' | 'doc_id'>,
+  formData: FormData,
 ): Promise<IndexResponse> {
   return apiFetch<IndexResponse>(`/v1/documents/${docId}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(doc),
+    body: formData,
   });
 }
 

@@ -181,9 +181,9 @@ export function useNewDocumentForm(
   function prepareEdit(d: DocumentDetailResponse) {
     setFormError('');
     setEditingDocId(d.doc_id);
-    setContentMode('upload');
+    setContentMode('editor');
     setTitle(d.title);
-    setContent('');
+    setContent(d.content);
     clearFileInput();
     setConvertedFromHtml(false);
     setConverting(false);
@@ -198,11 +198,6 @@ export function useNewDocumentForm(
     setFormError('');
     setLoading(true);
 
-    const tags = tagsText
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
-
     const updateId = editingDocId;
 
     if (!title.trim()) {
@@ -213,14 +208,26 @@ export function useNewDocumentForm(
 
     try {
       let res: IndexResponse;
+      const appendCommonFields = (fd: FormData) => {
+        fd.append('title', title.trim());
+        fd.append('doc_url', docUrl.trim());
+        fd.append('path', path.trim());
+        fd.append('note', note);
+        fd.append('tags', tagsText);
+      };
       if (updateId != null) {
-        res = await updateDocument(updateId, {
-          title: title.trim(),
-          doc_url: docUrl.trim(),
-          tags,
-          path: path.trim(),
-          note,
+        if (!content.trim()) {
+          setFormError(t('form.addContentOrUpload'));
+          setLoading(false);
+          return;
+        }
+        const file = new File([content], 'content.txt', {
+          type: 'text/plain;charset=utf-8',
         });
+        const fd = new FormData();
+        fd.append('file', file);
+        appendCommonFields(fd);
+        res = await updateDocument(updateId, fd);
       } else if (contentFile) {
         let fileForUpload = contentFile;
         if (isTextLikeUploadFile(contentFile)) {
@@ -250,11 +257,7 @@ export function useNewDocumentForm(
         const utf8File = await ensureUtf8File(fileForUpload);
         const fd = new FormData();
         fd.append('file', utf8File);
-        fd.append('title', title.trim());
-        fd.append('doc_url', docUrl.trim());
-        fd.append('path', path.trim());
-        fd.append('note', note);
-        fd.append('tags', tagsText);
+        appendCommonFields(fd);
         res = await indexDocumentUpload(fd);
       } else if (contentMode === 'editor') {
         if (!content.trim()) {
@@ -267,11 +270,7 @@ export function useNewDocumentForm(
         });
         const fd = new FormData();
         fd.append('file', file);
-        fd.append('title', title.trim());
-        fd.append('doc_url', docUrl.trim());
-        fd.append('path', path.trim());
-        fd.append('note', note);
-        fd.append('tags', tagsText);
+        appendCommonFields(fd);
         res = await indexDocumentUpload(fd);
       } else {
         setFormError(t('form.uploadOrEditor'));

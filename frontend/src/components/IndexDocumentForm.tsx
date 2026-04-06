@@ -568,62 +568,76 @@ export function IndexDocumentForm({ form }: IndexDocumentFormProps) {
             </details>
           </>
         ) : isEditing ? (
-          <FormSection>
-            <div>
-              <label htmlFor="idx-title" className={labelCls}>
-                {t('form.title')} <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="idx-title"
-                required
-                autoFocus
-                className={inputCls}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={t('form.pageTitlePlaceholder')}
-              />
-            </div>
-            <div>
-              <label htmlFor="idx-path" className={labelCls}>
-                {t('form.path')}
-              </label>
-              <input
-                id="idx-path"
-                className={`${inputCls} font-mono text-[12px]`}
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder={t('form.pathPlaceholderShort')}
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <>
+            <FormSection>
               <div>
-                <label htmlFor="idx-url" className={labelCls}>
-                  {t('form.docUrl')}
+                <label htmlFor="idx-title" className={labelCls}>
+                  {t('form.title')} <span className="text-red-400">*</span>
                 </label>
                 <input
-                  id="idx-url"
-                  type="url"
-                  className={`${inputCls} font-mono text-[12px]`}
-                  value={docUrl}
-                  onChange={(e) => setDocUrl(e.target.value)}
-                  placeholder={t('form.urlPlaceholder')}
+                  id="idx-title"
+                  required
+                  autoFocus
+                  className={inputCls}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t('form.pageTitlePlaceholder')}
                 />
               </div>
               <div>
-                <label className={labelCls}>{t('form.tags')}</label>
-                <TagsInput value={tagsText} onChange={setTagsText} />
+                <label className={labelCls}>{t('form.body')}</label>
+                <div className="min-h-[16rem]">
+                  <TiptapEditor
+                    initialContent={form.content}
+                    onChange={form.setContent}
+                    placeholder={t('form.editorPlaceholder')}
+                  />
+                </div>
               </div>
-            </div>
-            <div>
-              <label className={labelCls}>{t('form.note')}</label>
-              <TiptapEditor
-                initialContent={note}
-                onChange={setNote}
-                placeholder={t('form.optionalPlaceholder')}
-                compact
-              />
-            </div>
-          </FormSection>
+            </FormSection>
+            <FormSection>
+              <div>
+                <label htmlFor="idx-path" className={labelCls}>
+                  {t('form.path')}
+                </label>
+                <input
+                  id="idx-path"
+                  className={`${inputCls} font-mono text-[12px]`}
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder={t('form.pathPlaceholderShort')}
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="idx-url" className={labelCls}>
+                    {t('form.docUrl')}
+                  </label>
+                  <input
+                    id="idx-url"
+                    type="url"
+                    className={`${inputCls} font-mono text-[12px]`}
+                    value={docUrl}
+                    onChange={(e) => setDocUrl(e.target.value)}
+                    placeholder={t('form.urlPlaceholder')}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>{t('form.tags')}</label>
+                  <TagsInput value={tagsText} onChange={setTagsText} />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>{t('form.note')}</label>
+                <TiptapEditor
+                  initialContent={note}
+                  onChange={setNote}
+                  placeholder={t('form.optionalPlaceholder')}
+                  compact
+                />
+              </div>
+            </FormSection>
+          </>
         ) : (
           <>
             <FormSection>
