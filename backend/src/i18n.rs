@@ -31,8 +31,6 @@ pub enum Msg {
     DocNeedsFilePart,
     UploadedFileUtf8,
 
-    BulkContentEmpty,
-
     SearchTooManyTags,
     SearchNeedsCriteria,
 
@@ -141,10 +139,6 @@ pub fn t(locale: Locale, msg: Msg) -> &'static str {
             Locale::ZhHans => "上传的文件须为有效的 UTF-8 文本或 HTML。请转换编码后重试。",
         },
 
-        Msg::BulkContentEmpty => match locale {
-            Locale::En => "Content cannot be empty. Add text or HTML before saving.",
-            Locale::ZhHans => "正文不能为空。保存前请添加文本或 HTML。",
-        },
         Msg::SearchTooManyTags => match locale {
             Locale::En => {
                 "Too many tag filters in this search. Remove some tag filters (comma-separated) and try again."

@@ -317,7 +317,9 @@ fn looks_like_html(s: &str) -> bool {
     if t.starts_with("<!DOCTYPE") || t.starts_with("<!doctype") {
         return true;
     }
-    if t.len() >= 5 && t[..5].eq_ignore_ascii_case("<html") {
+    if t.get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<html"))
+    {
         return true;
     }
     if t.starts_with("<?xml") {
