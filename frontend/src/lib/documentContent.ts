@@ -269,8 +269,9 @@ function elementDepthBelowBody(el: Element, body: HTMLElement): number {
 }
 
 /**
- * Remove elements under `doc.body` that are not shown in layout: `[hidden]`,
- * computed `display: none`, and `input[type="hidden"]`.
+ * Remove elements under `doc.body` that are not visible to users:
+ * `[hidden]`, `input[type="hidden"]`, `display:none`, `visibility:hidden|collapse`,
+ * `opacity:0`, and nodes with both width and height equal to 0.
  * Deepest matches are removed first so nested `display:none` subtrees are handled safely.
  */
 export function removeNonDisplayedBodyElements(doc: Document): number {
@@ -295,6 +296,23 @@ export function removeNonDisplayedBodyElements(doc: Document): number {
     }
     const cs = win.getComputedStyle(el);
     if (cs.display === 'none') {
+      matches.add(el);
+      continue;
+    }
+    if (cs.visibility === 'hidden' || cs.visibility === 'collapse') {
+      matches.add(el);
+      continue;
+    }
+    if (Number.parseFloat(cs.opacity) === 0) {
+      matches.add(el);
+      continue;
+    }
+
+    const rect = el.getBoundingClientRect();
+    const width = rect.width > 0 ? rect.width : el.clientWidth || el.scrollWidth;
+    const height =
+      rect.height > 0 ? rect.height : el.clientHeight || el.scrollHeight;
+    if (width === 0 && height === 0) {
       matches.add(el);
     }
   }
