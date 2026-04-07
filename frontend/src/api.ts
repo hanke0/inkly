@@ -160,9 +160,60 @@ export async function fetchCatalog(path: string): Promise<CatalogResponse> {
 export async function fetchDocument(
   docId: number,
 ): Promise<DocumentDetailResponse> {
-  return apiFetch<DocumentDetailResponse>(`/v1/documents/${docId}`, {
-    method: 'GET',
-  });
+  const headers = new Headers();
+  applyBasicAuth(headers);
+  if (preferredAcceptLanguage) {
+    headers.set('Accept-Language', preferredAcceptLanguage);
+  }
+
+  const res = await fetch(`/v1/documents/${docId}`, { method: 'GET', headers });
+  if (!res.ok) {
+    let message = `Request failed: ${res.status}`;
+    const contentType = res.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      const body = (await res.json().catch(() => null)) as ErrorBody | null;
+      if (body?.error) {
+        message = body.error;
+      }
+    } else {
+      const text = (await res.text().catch(() => '')).trim();
+      if (text !== '') {
+        message = text;
+      }
+    }
+    announceApiError({ source: 'text', text: message });
+    throw new Error(message);
+  }
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('multipart/form-data')) {
+    return (await res.json()) as DocumentDetailResponse;
+  }
+
+  const form = await res.formData();
+  const filePart = form.get('file');
+  const content =
+    filePart instanceof File ? await filePart.text() : String(filePart ?? '');
+
+  const tagsRaw = String(form.get('tags') ?? '').trim();
+  return {
+    doc_id: Number(form.get('doc_id') ?? docId),
+    title: String(form.get('title') ?? ''),
+    content,
+    summary: String(form.get('summary') ?? ''),
+    doc_url: String(form.get('doc_url') ?? ''),
+    path: String(form.get('path') ?? '/'),
+    note: String(form.get('note') ?? ''),
+    tags:
+      tagsRaw === ''
+        ? []
+        : tagsRaw
+            .split(',')
+            .map((t) => t.trim())
+            .filter((t) => t !== ''),
+    created_at: Number(form.get('created_at') ?? 0),
+    updated_at: Number(form.get('updated_at') ?? 0),
+  };
 }
 
 export async function deleteDocument(docId: number): Promise<void> {

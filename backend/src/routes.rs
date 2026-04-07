@@ -1,7 +1,7 @@
 use axum::Extension;
 use axum::Json;
 use axum::extract::{Multipart, Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use serde::Serialize;
 use std::result::Result;
@@ -15,9 +15,8 @@ use crate::state::AppState;
 use crate::summary_queue::EnqueueOutcome;
 
 use inkly_contract::dto::{
-    CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentDetailResponse, DocumentIn,
-    IndexResponse, SearchQuery, SearchResponse, SearchResult, SessionResponse,
-    SummaryEnqueueResponse,
+    CatalogFile, CatalogQuery, CatalogResponse, CatalogSubdir, DocumentIn, IndexResponse,
+    SearchQuery, SearchResponse, SearchResult, SessionResponse, SummaryEnqueueResponse,
 };
 use inkly_search::{DocumentRow, SearchError, SearchResultItem, StoredDocument};
 use tracing::{info, warn};
@@ -127,19 +126,55 @@ fn into_search_result(it: SearchResultItem) -> SearchResult {
     }
 }
 
-fn into_document_detail(d: StoredDocument) -> DocumentDetailResponse {
-    DocumentDetailResponse {
-        doc_id: d.doc_id,
-        title: d.title,
-        content: d.content,
-        summary: d.summary,
-        doc_url: d.doc_url,
-        path: d.path,
-        note: d.note,
-        tags: d.tags,
-        created_at: d.created_at,
-        updated_at: d.updated_at,
-    }
+fn append_multipart_text(body: &mut Vec<u8>, boundary: &str, name: &str, value: &str) {
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
+    );
+    body.extend_from_slice(value.as_bytes());
+    body.extend_from_slice(b"\r\n");
+}
+
+fn document_multipart_response(d: StoredDocument) -> impl IntoResponse {
+    let boundary = format!("inkly-doc-{}", d.doc_id);
+    let mut body = Vec::new();
+
+    append_multipart_text(&mut body, &boundary, "doc_id", &d.doc_id.to_string());
+    append_multipart_text(&mut body, &boundary, "title", &d.title);
+    append_multipart_text(&mut body, &boundary, "summary", &d.summary);
+    append_multipart_text(&mut body, &boundary, "doc_url", &d.doc_url);
+    append_multipart_text(&mut body, &boundary, "path", &d.path);
+    append_multipart_text(&mut body, &boundary, "note", &d.note);
+    append_multipart_text(
+        &mut body,
+        &boundary,
+        "created_at",
+        &d.created_at.to_string(),
+    );
+    append_multipart_text(
+        &mut body,
+        &boundary,
+        "updated_at",
+        &d.updated_at.to_string(),
+    );
+    append_multipart_text(&mut body, &boundary, "tags", &d.tags.join(","));
+
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"document.txt\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: text/plain; charset=utf-8\r\n\r\n");
+    body.extend_from_slice(d.content.as_bytes());
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+
+    (
+        [(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        )],
+        body,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -520,7 +555,7 @@ pub async fn get_document(
     Extension(user): Extension<AuthUser>,
     Extension(locale): Extension<Locale>,
     Path(doc_id): Path<u64>,
-) -> Result<Json<DocumentDetailResponse>, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
     if doc_id == 0 {
         return Err(ApiError::bad_request(t(locale, Msg::DocIdPositive)));
     }
@@ -541,7 +576,7 @@ pub async fn get_document(
         .map_err(|e| map_index_error(e, locale))?;
 
     let d = doc.ok_or_else(|| ApiError::not_found(locale))?;
-    Ok(Json(into_document_detail(d)))
+    Ok(document_multipart_response(d))
 }
 
 pub async fn delete_document(
