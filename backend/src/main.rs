@@ -24,7 +24,10 @@ use routes::{
 };
 use state::AppState;
 use summary_queue::SummaryQueue;
+use tower_http::CompressionLevel;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tracing::info;
@@ -225,6 +228,15 @@ async fn run_server() {
 
     let auth_layer = axum::middleware::from_fn_with_state(state.clone(), auth::auth_middleware);
 
+    // Keep response compression preference aligned with our desired order:
+    // zstd, then br, then gzip/deflate.
+    let compression_layer = CompressionLayer::new()
+        .zstd(true)
+        .br(true)
+        .gzip(true)
+        .deflate(true)
+        .quality(CompressionLevel::Default);
+
     let app = Router::new()
         .route("/healthz", get(healthz))
         .route(
@@ -251,6 +263,8 @@ async fn run_server() {
         .layer(RequestBodyLimitLayer::new(config.max_body_bytes))
         // Multipart uses `with_limited_body()` (default 2 MiB); align with tower body cap so large uploads are not truncated mid-stream.
         .layer(DefaultBodyLimit::max(config.max_body_bytes))
+        .layer(RequestDecompressionLayer::new())
+        .layer(compression_layer)
         .layer(cors_layer)
         .fallback(static_assets::spa_fallback)
         .with_state(state);

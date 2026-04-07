@@ -18,6 +18,44 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     envDir: repoRoot,
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return undefined;
+            }
+            if (id.includes('/@tiptap/') || id.includes('/prosemirror-')) {
+              return 'vendor-editor';
+            }
+            if (id.includes('/react/') || id.includes('/react-dom/')) {
+              return 'vendor-react';
+            }
+            if (
+              id.includes('/react-router-dom/') ||
+              id.includes('/react-router/')
+            ) {
+              return 'vendor-router';
+            }
+            if (id.includes('/katex/')) {
+              return 'vendor-katex';
+            }
+            if (
+              id.includes('/marked/') ||
+              id.includes('/turndown/') ||
+              id.includes('/turndown-plugin-gfm/') ||
+              id.includes('/chardet/')
+            ) {
+              return 'vendor-content';
+            }
+            if (id.includes('/dompurify/')) {
+              return 'vendor-sanitize';
+            }
+            return 'vendor';
+          },
+        },
+      },
+    },
     server: {
       port: 15174,
       strictPort: true,

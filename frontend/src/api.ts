@@ -54,6 +54,61 @@ type ApiFetchOptions = {
   quiet?: boolean;
 };
 
+type CompressionEncoding = 'zstd' | 'br' | 'gzip' | 'deflate';
+
+const REQUEST_COMPRESSION_PREFERENCE: readonly CompressionEncoding[] = [
+  'zstd',
+  'br',
+  'gzip',
+  'deflate',
+];
+
+function createCompressionStream(encoding: CompressionEncoding): CompressionStream {
+  return new CompressionStream(encoding as unknown as CompressionFormat);
+}
+
+function pickSupportedRequestCompression(): CompressionEncoding | null {
+  if (typeof CompressionStream === 'undefined') {
+    return null;
+  }
+  for (const encoding of REQUEST_COMPRESSION_PREFERENCE) {
+    try {
+      // Probe runtime support for this algorithm.
+      createCompressionStream(encoding);
+      return encoding;
+    } catch {
+      // Try the next preferred algorithm.
+    }
+  }
+  return null;
+}
+
+async function compressFormDataBody(formData: FormData): Promise<{
+  body: ArrayBuffer;
+  contentType: string;
+  contentEncoding: CompressionEncoding;
+} | null> {
+  const contentEncoding = pickSupportedRequestCompression();
+  if (contentEncoding === null) {
+    return null;
+  }
+
+  const encoded = new Response(formData);
+  const contentType = encoded.headers.get('content-type');
+  if (!contentType) {
+    return null;
+  }
+
+  const compression = createCompressionStream(contentEncoding);
+  const writer = compression.writable.getWriter();
+  const source = new Uint8Array(await encoded.arrayBuffer());
+  await writer.write(source);
+  await writer.close();
+
+  const compressed = await new Response(compression.readable).arrayBuffer();
+  return { body: compressed, contentType, contentEncoding };
+}
+
 async function apiFetch<T>(
   path: string,
   init: RequestInit,
@@ -108,9 +163,16 @@ async function apiFetch<T>(
 export async function indexDocumentUpload(
   formData: FormData,
 ): Promise<IndexResponse> {
+  const compressed = await compressFormDataBody(formData);
   return apiFetch<IndexResponse>('/v1/documents', {
     method: 'POST',
-    body: formData,
+    headers: compressed
+      ? {
+          'Content-Type': compressed.contentType,
+          'Content-Encoding': compressed.contentEncoding,
+        }
+      : undefined,
+    body: compressed ? compressed.body : formData,
   });
 }
 
@@ -119,9 +181,16 @@ export async function updateDocument(
   docId: number,
   formData: FormData,
 ): Promise<IndexResponse> {
+  const compressed = await compressFormDataBody(formData);
   return apiFetch<IndexResponse>(`/v1/documents/${docId}`, {
     method: 'POST',
-    body: formData,
+    headers: compressed
+      ? {
+          'Content-Type': compressed.contentType,
+          'Content-Encoding': compressed.contentEncoding,
+        }
+      : undefined,
+    body: compressed ? compressed.body : formData,
   });
 }
 
