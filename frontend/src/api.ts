@@ -63,7 +63,9 @@ const REQUEST_COMPRESSION_PREFERENCE: readonly CompressionEncoding[] = [
   'deflate',
 ];
 
-function createCompressionStream(encoding: CompressionEncoding): CompressionStream {
+function createCompressionStream(
+  encoding: CompressionEncoding,
+): CompressionStream {
   return new CompressionStream(encoding as unknown as CompressionFormat);
 }
 
@@ -88,25 +90,30 @@ async function compressFormDataBody(formData: FormData): Promise<{
   contentType: string;
   contentEncoding: CompressionEncoding;
 } | null> {
-  const contentEncoding = pickSupportedRequestCompression();
-  if (contentEncoding === null) {
+  try {
+    const contentEncoding = pickSupportedRequestCompression();
+    if (contentEncoding === null) {
+      return null;
+    }
+
+    const encoded = new Response(formData);
+    const contentType = encoded.headers.get('content-type');
+    if (!contentType) {
+      return null;
+    }
+
+    const compression = createCompressionStream(contentEncoding);
+    const writer = compression.writable.getWriter();
+    const source = new Uint8Array(await encoded.arrayBuffer());
+    await writer.write(source);
+    await writer.close();
+
+    const compressed = await new Response(compression.readable).arrayBuffer();
+    return { body: compressed, contentType, contentEncoding };
+  } catch {
+    // Never block save/upload due to runtime compression support quirks.
     return null;
   }
-
-  const encoded = new Response(formData);
-  const contentType = encoded.headers.get('content-type');
-  if (!contentType) {
-    return null;
-  }
-
-  const compression = createCompressionStream(contentEncoding);
-  const writer = compression.writable.getWriter();
-  const source = new Uint8Array(await encoded.arrayBuffer());
-  await writer.write(source);
-  await writer.close();
-
-  const compressed = await new Response(compression.readable).arrayBuffer();
-  return { body: compressed, contentType, contentEncoding };
 }
 
 async function apiFetch<T>(
