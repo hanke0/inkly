@@ -69,47 +69,55 @@ function createCompressionStream(
   return new CompressionStream(encoding as unknown as CompressionFormat);
 }
 
-function pickSupportedRequestCompression(): CompressionEncoding | null {
-  if (typeof CompressionStream === 'undefined') {
-    return null;
-  }
-  for (const encoding of REQUEST_COMPRESSION_PREFERENCE) {
-    try {
-      // Probe runtime support for this algorithm.
-      createCompressionStream(encoding);
-      return encoding;
-    } catch {
-      // Try the next preferred algorithm.
-    }
-  }
-  return null;
-}
-
 async function compressFormDataBody(formData: FormData): Promise<{
   body: ArrayBuffer;
   contentType: string;
   contentEncoding: CompressionEncoding;
 } | null> {
-  try {
-    const contentEncoding = pickSupportedRequestCompression();
-    if (contentEncoding === null) {
-      return null;
-    }
+  if (typeof CompressionStream === 'undefined') {
+    return null;
+  }
 
+  try {
     const encoded = new Response(formData);
     const contentType = encoded.headers.get('content-type');
     if (!contentType) {
       return null;
     }
 
-    const compression = createCompressionStream(contentEncoding);
-    const writer = compression.writable.getWriter();
-    const source = new Uint8Array(await encoded.arrayBuffer());
-    await writer.write(source);
-    await writer.close();
+    const raw = await encoded.arrayBuffer();
+    if (raw.byteLength === 0) {
+      return null;
+    }
 
-    const compressed = await new Response(compression.readable).arrayBuffer();
-    return { body: compressed, contentType, contentEncoding };
+    for (const contentEncoding of REQUEST_COMPRESSION_PREFERENCE) {
+      try {
+        createCompressionStream(contentEncoding);
+      } catch {
+        continue;
+      }
+
+      let compressedStream: ReadableStream<Uint8Array>;
+      try {
+        const sourceStream = new Blob([raw]).stream();
+        compressedStream = sourceStream.pipeThrough(
+          createCompressionStream(contentEncoding),
+        );
+      } catch {
+        continue;
+      }
+
+      let body: ArrayBuffer;
+      try {
+        body = await new Response(compressedStream).arrayBuffer();
+      } catch {
+        continue;
+      }
+
+      return { body, contentType, contentEncoding };
+    }
+
+    return null;
   } catch {
     // Never block save/upload due to runtime compression support quirks.
     return null;
