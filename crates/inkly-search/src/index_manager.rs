@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use tantivy::collector::TopDocs;
-use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, RegexQuery, TermQuery};
+use tantivy::collector::{Count, TopDocs};
+use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::{
     FAST, Field, FieldType, INDEXED, IndexRecordOption, STORED, STRING, TextFieldIndexing,
     TextOptions, Value,
@@ -98,6 +98,26 @@ fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
         let base = parent.trim_end_matches('/');
         Some(format!("{base}/{first}/"))
     }
+}
+
+fn path_ancestors(path: &str) -> Vec<String> {
+    if path == "/" {
+        return vec!["/".to_string()];
+    }
+    let inner = path.trim_matches('/');
+    if inner.is_empty() {
+        return vec!["/".to_string()];
+    }
+    let mut out = Vec::with_capacity(inner.matches('/').count() + 2);
+    out.push("/".to_string());
+    let mut prefix = String::new();
+    for seg in inner.split('/').filter(|s| !s.is_empty()) {
+        prefix.push('/');
+        prefix.push_str(seg);
+        prefix.push('/');
+        out.push(prefix.clone());
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +217,7 @@ pub struct IndexManager {
     update_timestamp_field: Field,
     tags_field: Field,
     path_field: Field,
+    path_ancestors_field: Field,
     note_field: Field,
 }
 
@@ -289,6 +310,13 @@ impl IndexManager {
                     .into(),
             ));
         }
+        let path_ancestors_field = require_field!(schema, "path_ancestors");
+        if !schema.get_field_entry(path_ancestors_field).is_indexed() {
+            return Err(SearchError::InvalidInput(
+                "Tantivy index schema is outdated: path_ancestors must be indexed. Delete DATA_DIR/index and restart."
+                    .into(),
+            ));
+        }
         let note_field = require_field!(schema, "note");
 
         ensure_jieba_text_schema(&schema)?;
@@ -309,6 +337,7 @@ impl IndexManager {
             update_timestamp_field,
             tags_field,
             path_field,
+            path_ancestors_field,
             note_field,
             summary_field,
         })
@@ -351,6 +380,7 @@ impl IndexManager {
             )
             .set_stored();
         let _path = builder.add_text_field("path", path_opts);
+        let _path_ancestors = builder.add_text_field("path_ancestors", STRING);
         let _note = builder.add_text_field("note", jieba_text_options_stored());
 
         builder.build()
@@ -377,6 +407,9 @@ impl IndexManager {
         );
         for tag in &doc.tags {
             document.add_text(self.tags_field, tag);
+        }
+        for anc in path_ancestors(&doc.path) {
+            document.add_text(self.path_ancestors_field, &anc);
         }
         document
     }
@@ -561,9 +594,10 @@ impl IndexManager {
         ];
 
         if let Some(prefix) = path_prefix.filter(|p| !p.is_empty() && *p != "/") {
-            // Tantivy FST regex does not accept a leading `^`; match full path terms by prefix + remainder.
-            let pattern = format!("{}.*", regex::escape(prefix));
-            let path_query = RegexQuery::from_pattern(&pattern, self.path_field)?;
+            let path_query = TermQuery::new(
+                Term::from_field_text(self.path_ancestors_field, prefix),
+                IndexRecordOption::Basic,
+            );
             clauses.push((Occur::Must, Box::new(path_query)));
         }
 
@@ -577,8 +611,10 @@ impl IndexManager {
 
         let query = BooleanQuery::new(clauses);
 
-        let total_hits = query.count(&searcher)? as u64;
-        let hits = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
+        let (total_hits, hits) = searcher.search(
+            &query,
+            &(Count, TopDocs::with_limit(limit).order_by_score()),
+        )?;
 
         let mut results = Vec::with_capacity(hits.len());
         for (score, doc_address) in hits {
@@ -621,7 +657,7 @@ impl IndexManager {
             });
         }
 
-        Ok((total_hits, results))
+        Ok((total_hits as u64, results))
     }
 
     pub fn catalog_list(&self, tenant_id: &str, dir_path: &str) -> Result<CatalogListing> {
@@ -630,9 +666,20 @@ impl IndexManager {
 
         let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
         let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
+        let mut scope_clauses: Vec<(Occur, Box<dyn Query>)> =
+            vec![(Occur::Must, Box::new(tenant_query))];
+        if dir_path != "/" {
+            // Narrow the scan to the requested subtree instead of the whole tenant corpus.
+            let subtree_query = TermQuery::new(
+                Term::from_field_text(self.path_ancestors_field, dir_path),
+                IndexRecordOption::Basic,
+            );
+            scope_clauses.push((Occur::Must, Box::new(subtree_query)));
+        }
+        let scope_query = BooleanQuery::new(scope_clauses);
 
         let hits = searcher.search(
-            &tenant_query,
+            &scope_query,
             &TopDocs::with_limit(MAX_CATALOG_SCAN).order_by_score(),
         )?;
 

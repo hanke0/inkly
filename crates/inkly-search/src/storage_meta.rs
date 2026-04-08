@@ -11,9 +11,10 @@ use crate::error::{Result, SearchError};
 
 /// Bump when on-disk semantics change; mismatch causes startup failure.
 ///
+/// **4** — Add indexed `path_ancestors` terms for fast directory-prefix filtering without regex.
 /// **3** — Tantivy text fields (`title`, `content`, `summary`, `note`) use the `jieba` tokenizer.
 /// **2** — previous schema (default English-oriented tokenizer for those fields).
-pub const STORAGE_DATA_VERSION: u32 = 3;
+pub const STORAGE_DATA_VERSION: u32 = 4;
 
 /// First value returned by `allocate_doc_id` on a fresh store (`auto_increment` in file).
 pub const DEFAULT_AUTO_INCREMENT_NEXT: u64 = 1000;

@@ -2,7 +2,7 @@
 //! One background thread processes jobs sequentially; survives process restarts.
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use inkly_search::DocumentRow;
@@ -19,6 +19,8 @@ pub enum EnqueueOutcome {
 
 pub struct SummaryQueue {
     conn: Mutex<Connection>,
+    signal: Condvar,
+    wait_lock: Mutex<()>,
 }
 
 impl SummaryQueue {
@@ -37,6 +39,8 @@ impl SummaryQueue {
         )?;
         Ok(Self {
             conn: Mutex::new(conn),
+            signal: Condvar::new(),
+            wait_lock: Mutex::new(()),
         })
     }
 
@@ -52,6 +56,8 @@ impl SummaryQueue {
             params![tenant_id, doc_id as i64, now],
         )?;
         Ok(if n > 0 {
+            // Wake the worker immediately instead of waiting for polling interval.
+            self.signal.notify_one();
             EnqueueOutcome::Enqueued
         } else {
             EnqueueOutcome::AlreadyQueued
@@ -79,6 +85,14 @@ impl SummaryQueue {
         Ok(())
     }
 
+    fn wait_for_work(&self, timeout: Duration) {
+        let guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = self
+            .signal
+            .wait_timeout(guard, timeout)
+            .unwrap_or_else(|e| e.into_inner());
+    }
+
     fn conn_lock(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -90,12 +104,13 @@ pub fn run_worker_loop(state: Arc<AppState>, queue: Arc<SummaryQueue>) {
         let job = match queue.peek_next() {
             Ok(Some(j)) => j,
             Ok(None) => {
-                std::thread::sleep(Duration::from_secs(1));
+                // Block until enqueue notifies, with periodic timeout as a safety net.
+                queue.wait_for_work(Duration::from_secs(30));
                 continue;
             }
             Err(e) => {
                 tracing::error!(error = %e, "summary queue peek failed");
-                std::thread::sleep(Duration::from_secs(5));
+                queue.wait_for_work(Duration::from_secs(5));
                 continue;
             }
         };

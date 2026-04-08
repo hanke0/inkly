@@ -1,7 +1,7 @@
 //! Offline migration of on-disk search storage (`version.data` + Tantivy `index/`).
 //!
-//! Currently supported: **data_version 2 → [`STORAGE_DATA_VERSION`](crate::storage_meta::STORAGE_DATA_VERSION)**  
-//! (rebuild index with jieba tokenization while preserving `doc_id`, timestamps, and `auto_increment`).
+//! Currently supported: **data_version 2/3 → [`STORAGE_DATA_VERSION`](crate::storage_meta::STORAGE_DATA_VERSION)**  
+//! (rebuild index with current schema while preserving `doc_id`, timestamps, and `auto_increment`).
 //!
 //! The live tree under `documents_root` is not modified until the new index is complete: a sibling
 //! staging directory is filled first, then the old directory is renamed to
@@ -26,8 +26,9 @@ use crate::error::{Result, SearchError};
 use crate::index_manager::{DocumentRow, IndexManager};
 use crate::storage_meta::{self, VersionData};
 
-/// `data_version` value this binary can migrate **from** (inclusive of export semantics).
-pub const MIGRATE_FROM_DATA_VERSION: u32 = 2;
+/// Legacy `data_version` values this binary can migrate from.
+pub const MIGRATE_FROM_DATA_VERSION_MIN: u32 = 2;
+pub const MIGRATE_FROM_DATA_VERSION_MAX: u32 = 3;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MigrateReport {
@@ -202,9 +203,12 @@ pub fn migrate_storage_to_current(
         });
     }
 
-    if ver.data_version != MIGRATE_FROM_DATA_VERSION {
+    if !(MIGRATE_FROM_DATA_VERSION_MIN..=MIGRATE_FROM_DATA_VERSION_MAX).contains(&ver.data_version)
+    {
         return Err(SearchError::InvalidInput(format!(
-            "this tool only migrates data_version {MIGRATE_FROM_DATA_VERSION} -> {}; found {}",
+            "this tool only migrates data_version {}..={} -> {}; found {}",
+            MIGRATE_FROM_DATA_VERSION_MIN,
+            MIGRATE_FROM_DATA_VERSION_MAX,
             storage_meta::STORAGE_DATA_VERSION,
             ver.data_version
         )));
