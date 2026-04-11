@@ -1,6 +1,6 @@
 [package]
 name = "inkly"
-version = "0.6.2"
+version = "0.6.3"
 edition = "2024"
 
 [features]
@@ -27,7 +27,7 @@ inkly-search = { path = "../crates/inkly-search" }
 inkly-summarize = { path = "../crates/inkly-summarize" }
 include_dir = "0.7.4"
 mime_guess = "2.0.5"
-rusqlite = { version = "0.37.0", features = ["bundled"] }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
