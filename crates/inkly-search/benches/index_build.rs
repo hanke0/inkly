@@ -1,9 +1,10 @@
 use std::fs;
+use std::hint::black_box;
 use std::path::Path;
 use std::sync::Once;
 use std::time::Duration;
 
-use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use inkly_search::{DocumentRow, IndexManager};
 use tempfile::tempdir;
 

@@ -16,7 +16,6 @@ base64 = "0.22.1"
 dotenvy = "0.15.7"
 serde = { version = "1.0.228", features = ["derive"] }
 subtle = "2.6.1"
-serde_json = "1.0.149"
 tokio = { version = "1.51.1", features = ["full"] }
 tower-http = { version = "0.6.8", features = ["trace", "request-id", "limit", "cors", "compression-gzip", "compression-deflate", "compression-br", "compression-zstd", "decompression-gzip", "decompression-deflate", "decompression-br", "decompression-zstd"] }
 tracing = "0.1.44"

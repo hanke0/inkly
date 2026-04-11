@@ -1399,7 +1399,7 @@ dependencies = [
 
 [[package]]
 name = "inkly"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "axum",
  "base64",
@@ -1412,7 +1412,6 @@ dependencies = [
  "mime_guess",
  "rusqlite",
  "serde",
- "serde_json",
  "subtle",
  "tempfile",
  "tokio",
@@ -1426,8 +1425,6 @@ name = "inkly-contract"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -1435,7 +1432,6 @@ name = "inkly-search"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "regex",
  "serde",
  "serde_json",
  "tantivy",
@@ -1443,7 +1439,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "time",
- "tracing",
 ]
 
 [[package]]
