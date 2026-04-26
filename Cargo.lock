@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "inkly"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "axum",
  "base64",
@@ -1382,14 +1382,14 @@ dependencies = [
 
 [[package]]
 name = "inkly-contract"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "inkly-search"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "criterion",
  "rusqlite",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "inkly-summarize"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "encoding_rs",
  "hf-hub",
