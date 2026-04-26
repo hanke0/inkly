@@ -1,20 +1,23 @@
+//! SQLite + FTS5 backed document store and full-text search.
+//!
+//! Layout inside `data_root`:
+//! - `db.sqlite3` — primary store (documents + tags + FTS5 index)
+//! - `version.data` — JSON `{ data_version, auto_increment }` (see [`crate::storage_meta`])
+//!
+//! The FTS5 virtual table (`documents_fts`) uses the `simple` tokenizer from
+//! [`sqlite-simple-tokenizer`](https://crates.io/crates/sqlite-simple-tokenizer), which indexes
+//! Chinese characters individually (with pinyin expansion) and applies English stemming. Queries
+//! are built via the `simple_query()` SQL function so that user-entered Chinese / pinyin / English
+//! text always produces a valid FTS5 MATCH expression.
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery};
-use tantivy::schema::{
-    FAST, Field, FieldType, INDEXED, IndexRecordOption, STORED, STRING, TextFieldIndexing,
-    TextOptions, Value,
-};
-use tantivy::{Index, Term, doc, schema};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::error::{Result, SearchError};
 use crate::storage_meta;
-
-/// Tantivy writer heap budget (bytes). 50 MiB is generous for batch commits at this scale.
-const WRITER_HEAP_BYTES: usize = 50_000_000;
 
 #[derive(Clone, Debug)]
 pub struct IndexStats {
@@ -52,8 +55,8 @@ pub struct SearchResultItem {
     pub note: String,
 }
 
-const MAX_CATALOG_SCAN: usize = 50_000;
 const MAX_CATALOG_FILES: usize = 5_000;
+const SEARCH_SNIPPET_CHARS: usize = 220;
 
 /// One directory level in the catalog API (`name`, normalized `path`).
 #[derive(Clone, Debug)]
@@ -100,103 +103,23 @@ fn direct_subdir_under(parent: &str, indexed_path: &str) -> Option<String> {
     }
 }
 
-fn path_ancestors(path: &str) -> Vec<String> {
-    if path == "/" {
-        return vec!["/".to_string()];
-    }
-    let inner = path.trim_matches('/');
-    if inner.is_empty() {
-        return vec!["/".to_string()];
-    }
-    let mut out = Vec::with_capacity(inner.matches('/').count() + 2);
-    out.push("/".to_string());
-    let mut prefix = String::new();
-    for seg in inner.split('/').filter(|s| !s.is_empty()) {
-        prefix.push('/');
-        prefix.push_str(seg);
-        prefix.push('/');
-        out.push(prefix.clone());
+/// Escape `%`, `_`, and the escape character itself for use inside a `LIKE` pattern.
+/// Queries must include `ESCAPE '\\'` to match the escape rule.
+fn escape_like(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    for ch in pattern.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(ch);
     }
     out
 }
 
 // ---------------------------------------------------------------------------
-// Schema / field helpers
-// ---------------------------------------------------------------------------
 
-/// Registered name for [`tantivy_jieba::JiebaTokenizer`] (Chinese + mixed text).
-const JIEBA_TOKENIZER: &str = "jieba";
-
-fn register_jieba_tokenizer(index: &Index) {
-    index
-        .tokenizers()
-        .register(JIEBA_TOKENIZER, tantivy_jieba::JiebaTokenizer::new());
-}
-
-fn jieba_text_options_stored() -> TextOptions {
-    TextOptions::default()
-        .set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer(JIEBA_TOKENIZER)
-                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-        )
-        .set_stored()
-}
-
-fn field_uses_jieba_tokenizer(entry: &schema::FieldEntry) -> bool {
-    match entry.field_type() {
-        FieldType::Str(opt) => opt
-            .get_indexing_options()
-            .is_some_and(|idx| idx.tokenizer() == JIEBA_TOKENIZER),
-        _ => false,
-    }
-}
-
-fn ensure_jieba_text_schema(schema: &schema::Schema) -> Result<()> {
-    for name in ["title", "content", "summary", "note"] {
-        let field = schema.get_field(name).map_err(|_| {
-            SearchError::InvalidInput(format!("missing {name} field in Tantivy schema"))
-        })?;
-        let entry = schema.get_field_entry(field);
-        if !field_uses_jieba_tokenizer(entry) {
-            return Err(SearchError::InvalidInput(format!(
-                "Tantivy index schema is outdated: field {name} must use the {JIEBA_TOKENIZER} tokenizer for Chinese search. Delete the index directory (DATA_DIR/index) and restart to reindex."
-            )));
-        }
-    }
-    Ok(())
-}
-
-macro_rules! require_field {
-    ($schema:expr, $name:literal) => {
-        $schema
-            .get_field($name)
-            .map_err(|_| SearchError::InvalidInput(concat!("missing ", $name, " field").into()))?
-    };
-}
-
-// ---------------------------------------------------------------------------
-// Field extraction helpers
-// ---------------------------------------------------------------------------
-
-fn get_str_field(doc: &tantivy::TantivyDocument, field: Field) -> String {
-    doc.get_first(field)
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string()
-}
-
-fn get_u64_field(doc: &tantivy::TantivyDocument, field: Field) -> u64 {
-    doc.get_first(field).and_then(|v| v.as_u64()).unwrap_or(0)
-}
-
-fn get_i64_field(doc: &tantivy::TantivyDocument, field: Field) -> i64 {
-    doc.get_first(field).and_then(|v| v.as_i64()).unwrap_or(0)
-}
-
-// ---------------------------------------------------------------------------
-
-struct AutoIncrementState {
+struct Inner {
+    conn: Connection,
     version_path: PathBuf,
     data_version: u32,
     /// Next `doc_id` to assign.
@@ -205,20 +128,7 @@ struct AutoIncrementState {
 
 #[derive(Clone)]
 pub struct IndexManager {
-    index: Index,
-    auto_increment: Arc<Mutex<AutoIncrementState>>,
-    tenant_id_field: Field,
-    doc_id_field: Field,
-    doc_url_field: Field,
-    title_field: Field,
-    content_field: Field,
-    summary_field: Field,
-    created_timestamp_field: Field,
-    update_timestamp_field: Field,
-    tags_field: Field,
-    path_field: Field,
-    path_ancestors_field: Field,
-    note_field: Field,
+    inner: Arc<Mutex<Inner>>,
 }
 
 impl IndexManager {
@@ -230,188 +140,40 @@ impl IndexManager {
         Ok(now)
     }
 
-    /// Returns a `BooleanQuery` that matches a single (tenant, doc_id) pair.
-    /// Reused by index, update, and delete operations to avoid repeated boilerplate.
-    fn make_tenant_doc_query(&self, tenant_id: &str, doc_id: u64) -> BooleanQuery {
-        BooleanQuery::new(vec![
-            (
-                Occur::Must,
-                Box::new(TermQuery::new(
-                    Term::from_field_text(self.tenant_id_field, tenant_id),
-                    IndexRecordOption::Basic,
-                )) as Box<dyn Query>,
-            ),
-            (
-                Occur::Must,
-                Box::new(TermQuery::new(
-                    Term::from_field_u64(self.doc_id_field, doc_id),
-                    IndexRecordOption::Basic,
-                )) as Box<dyn Query>,
-            ),
-        ])
+    fn lock(&self) -> Result<MutexGuard<'_, Inner>> {
+        self.inner.lock().map_err(|_| SearchError::LockPoisoned)
     }
 
-    fn existing_created_at(
-        &self,
-        searcher: &tantivy::Searcher,
-        tenant_id: &str,
-        doc_id: u64,
-    ) -> Result<Option<i64>> {
-        let query = self.make_tenant_doc_query(tenant_id, doc_id);
-        let hits = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
-        let (_, doc_address) = match hits.into_iter().next() {
-            Some(h) => h,
-            None => return Ok(None),
-        };
-        let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-        let created_at = retrieved
-            .get_first(self.created_timestamp_field)
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        Ok(Some(created_at))
-    }
-
-    /// Opens or creates the Tantivy index under `data_root/index/` and loads `data_root/version.data`.
+    /// Opens the SQLite store under `data_root/db.sqlite3` and reads `data_root/version.data`.
+    /// Creates both on a fresh tree.
     pub fn open_or_create<P: AsRef<Path>>(data_root: P) -> Result<Self> {
         let data_root = data_root.as_ref();
         let version_state = storage_meta::load_or_init_version_state(data_root)?;
-        let index_dir = storage_meta::index_dir(data_root);
+        let db_path = storage_meta::sqlite_db_path(data_root);
         let version_path = storage_meta::version_file_path(data_root);
 
-        let index = if let Ok(existing) = Index::open_in_dir(&index_dir) {
-            existing
-        } else {
-            let schema = Self::build_schema();
-            Index::create_in_dir(&index_dir, schema)?
-        };
-
-        register_jieba_tokenizer(&index);
-
-        let schema = index.schema();
-        let tenant_id_field = require_field!(schema, "tenant_id");
-        let doc_id_field = require_field!(schema, "doc_id");
-        if !schema.get_field_entry(doc_id_field).is_indexed() {
-            return Err(SearchError::InvalidInput(
-                "Tantivy index schema is outdated: doc_id must be indexed. Delete the index directory (DATA_DIR/index) and restart."
-                    .into(),
-            ));
-        }
-        let doc_url_field = require_field!(schema, "doc_url");
-        let title_field = require_field!(schema, "title");
-        let content_field = require_field!(schema, "content");
-        let summary_field = require_field!(schema, "summary");
-        let created_timestamp_field = require_field!(schema, "created_timestamp");
-        let update_timestamp_field = require_field!(schema, "update_timestamp");
-        let tags_field = require_field!(schema, "tags");
-        let path_field = require_field!(schema, "path");
-        if !schema.get_field_entry(path_field).is_indexed() {
-            return Err(SearchError::InvalidInput(
-                "Tantivy index schema is outdated: path must be indexed. Delete DATA_DIR/index and restart."
-                    .into(),
-            ));
-        }
-        let path_ancestors_field = require_field!(schema, "path_ancestors");
-        if !schema.get_field_entry(path_ancestors_field).is_indexed() {
-            return Err(SearchError::InvalidInput(
-                "Tantivy index schema is outdated: path_ancestors must be indexed. Delete DATA_DIR/index and restart."
-                    .into(),
-            ));
-        }
-        let note_field = require_field!(schema, "note");
-
-        ensure_jieba_text_schema(&schema)?;
+        let conn = open_and_prepare_connection(&db_path)?;
 
         Ok(Self {
-            index,
-            auto_increment: Arc::new(Mutex::new(AutoIncrementState {
+            inner: Arc::new(Mutex::new(Inner {
+                conn,
                 version_path,
                 data_version: version_state.data_version,
                 next: version_state.auto_increment,
             })),
-            tenant_id_field,
-            doc_id_field,
-            doc_url_field,
-            title_field,
-            content_field,
-            created_timestamp_field,
-            update_timestamp_field,
-            tags_field,
-            path_field,
-            path_ancestors_field,
-            note_field,
-            summary_field,
         })
     }
 
     /// Returns the next server-assigned `doc_id` and persists it to `version.data`.
     pub fn allocate_doc_id(&self) -> Result<u64> {
-        let mut guard = self
-            .auto_increment
-            .lock()
-            .map_err(|_| SearchError::LockPoisoned)?;
+        let mut guard = self.lock()?;
         let id = guard.next;
-        guard.next = guard
-            .next
+        let new_next = id
             .checked_add(1)
             .ok_or_else(|| SearchError::InvalidInput("auto_increment overflow".into()))?;
-        storage_meta::persist_auto_increment(&guard.version_path, guard.data_version, guard.next)?;
+        storage_meta::persist_auto_increment(&guard.version_path, guard.data_version, new_next)?;
+        guard.next = new_next;
         Ok(id)
-    }
-
-    fn build_schema() -> schema::Schema {
-        let mut builder = schema::Schema::builder();
-
-        let _tenant_id = builder.add_text_field("tenant_id", STRING | STORED);
-        // INDEXED is required for `TermQuery` / `delete_query` on this field (FAST alone is not enough).
-        let _doc_id = builder.add_u64_field("doc_id", INDEXED | FAST | STORED);
-        let _doc_url = builder.add_text_field("doc_url", STRING | STORED);
-        let _title = builder.add_text_field("title", jieba_text_options_stored());
-        let _content = builder.add_text_field("content", jieba_text_options_stored());
-        let _summary = builder.add_text_field("summary", jieba_text_options_stored());
-        let _created_timestamp = builder.add_i64_field("created_timestamp", STORED);
-        let _update_timestamp = builder.add_i64_field("update_timestamp", STORED);
-        let _tags = builder.add_text_field("tags", STRING | STORED);
-        // Whole-value indexing (`raw` tokenizer) for exact `path` `TermQuery` (STRING cannot be INDEXED in 0.25).
-        let path_opts = TextOptions::default()
-            .set_indexing_options(
-                TextFieldIndexing::default()
-                    .set_tokenizer("raw")
-                    .set_index_option(IndexRecordOption::Basic),
-            )
-            .set_stored();
-        let _path = builder.add_text_field("path", path_opts);
-        let _path_ancestors = builder.add_text_field("path_ancestors", STRING);
-        let _note = builder.add_text_field("note", jieba_text_options_stored());
-
-        builder.build()
-    }
-
-    fn build_tantivy_doc(
-        &self,
-        tenant_id: &str,
-        doc: &DocumentRow,
-        created_at: i64,
-        updated_at: i64,
-    ) -> tantivy::TantivyDocument {
-        let mut document = doc!(
-            self.tenant_id_field => tenant_id,
-            self.doc_id_field => doc.doc_id,
-            self.doc_url_field => doc.doc_url.as_str(),
-            self.title_field => doc.title.as_str(),
-            self.content_field => doc.content.as_str(),
-            self.summary_field => doc.summary.as_str(),
-            self.created_timestamp_field => created_at,
-            self.update_timestamp_field => updated_at,
-            self.path_field => doc.path.as_str(),
-            self.note_field => doc.note.as_str()
-        );
-        for tag in &doc.tags {
-            document.add_text(self.tags_field, tag);
-        }
-        for anc in path_ancestors(&doc.path) {
-            document.add_text(self.path_ancestors_field, &anc);
-        }
-        document
     }
 
     pub fn index_document(&self, tenant_id: &str, doc: DocumentRow) -> Result<IndexStats> {
@@ -423,19 +185,10 @@ impl IndexManager {
         }
 
         let now = Self::now_unix_seconds()?;
-
-        // Drop the reader before opening a writer — Tantivy can fail or deadlock if both are held.
-        let created_at = {
-            let reader = self.index.reader()?;
-            let searcher = reader.searcher();
-            self.existing_created_at(&searcher, tenant_id, doc.doc_id)?
-                .unwrap_or(now)
-        };
-
-        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
-        writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
-        writer.add_document(self.build_tantivy_doc(tenant_id, &doc, created_at, now))?;
-        writer.commit()?;
+        let mut guard = self.lock()?;
+        let tx = guard.conn.transaction().map_err(SearchError::Sqlite)?;
+        upsert_document(&tx, tenant_id, &doc, None, now)?;
+        tx.commit().map_err(SearchError::Sqlite)?;
 
         Ok(IndexStats {
             indexed: 1,
@@ -453,37 +206,27 @@ impl IndexManager {
         }
 
         let now = Self::now_unix_seconds()?;
-        let docs: Vec<DocumentRow> = docs.into_iter().collect();
+        let mut guard = self.lock()?;
+        let tx = guard.conn.transaction().map_err(SearchError::Sqlite)?;
 
-        let created_at_per_doc: Vec<i64> = {
-            let reader = self.index.reader()?;
-            let searcher = reader.searcher();
-            docs.iter()
-                .map(|d| {
-                    self.existing_created_at(&searcher, tenant_id, d.doc_id)
-                        .map(|opt| opt.unwrap_or(now))
-                })
-                .collect::<Result<Vec<_>>>()?
-        };
-
-        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
         let mut indexed = 0u64;
-
-        for (doc, created_at) in docs.into_iter().zip(created_at_per_doc) {
-            writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
-            writer.add_document(self.build_tantivy_doc(tenant_id, &doc, created_at, now))?;
+        for doc in docs {
+            if doc.doc_id == 0 {
+                return Err(SearchError::InvalidInput("doc_id is 0".into()));
+            }
+            upsert_document(&tx, tenant_id, &doc, None, now)?;
             indexed += 1;
         }
 
-        writer.commit()?;
-
+        tx.commit().map_err(SearchError::Sqlite)?;
         Ok(IndexStats {
             indexed,
             deleted: 0,
         })
     }
 
-    /// Like [`index_documents`](Self::index_documents) but keeps the given Unix timestamps (storage migration / reindex).
+    /// Like [`index_documents`](Self::index_documents) but keeps the given Unix timestamps
+    /// (storage migration / reindex).
     pub fn index_documents_with_timestamps(
         &self,
         tenant_id: &str,
@@ -493,33 +236,36 @@ impl IndexManager {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
 
-        let pairs: Vec<(DocumentRow, i64, i64)> = docs.into_iter().collect();
-        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
-        let mut indexed = 0u64;
+        let mut guard = self.lock()?;
+        let tx = guard.conn.transaction().map_err(SearchError::Sqlite)?;
 
-        for (doc, created_at, updated_at) in pairs {
-            writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc.doc_id)))?;
-            writer.add_document(self.build_tantivy_doc(tenant_id, &doc, created_at, updated_at))?;
+        let mut indexed = 0u64;
+        for (doc, created_at, updated_at) in docs {
+            if doc.doc_id == 0 {
+                return Err(SearchError::InvalidInput("doc_id is 0".into()));
+            }
+            upsert_document(&tx, tenant_id, &doc, Some(created_at), updated_at)?;
             indexed += 1;
         }
 
-        writer.commit()?;
-
+        tx.commit().map_err(SearchError::Sqlite)?;
         Ok(IndexStats {
             indexed,
             deleted: 0,
         })
     }
 
-    /// Streams rows through a **single** writer and **one** `commit` (migration / bulk reindex).
+    /// Streams rows through a **single** transaction and **one** `commit` (migration / bulk reindex).
     ///
-    /// Peak memory stays bounded by the iterator (one [`DocumentRow`] at a time) instead of materializing
-    /// all tenants in memory. Returns [`IndexStats::indexed`] and the count of **distinct** `tenant_id` values written.
+    /// Peak memory stays bounded by the iterator (one [`DocumentRow`] at a time). Returns
+    /// [`IndexStats::indexed`] and the count of **distinct** `tenant_id` values written.
     pub fn index_rows_with_timestamps_stream(
         &self,
         rows: impl IntoIterator<Item = Result<(String, DocumentRow, i64, i64)>>,
     ) -> Result<(IndexStats, usize)> {
-        let mut writer = self.index.writer(WRITER_HEAP_BYTES)?;
+        let mut guard = self.lock()?;
+        let tx = guard.conn.transaction().map_err(SearchError::Sqlite)?;
+
         let mut indexed = 0u64;
         let mut tenants = HashSet::new();
 
@@ -528,14 +274,15 @@ impl IndexManager {
             if tenant_id.trim().is_empty() {
                 return Err(SearchError::InvalidInput("tenant_id is empty".into()));
             }
-            tenants.insert(tenant_id.clone());
-            writer.delete_query(Box::new(self.make_tenant_doc_query(&tenant_id, doc.doc_id)))?;
-            writer
-                .add_document(self.build_tantivy_doc(&tenant_id, &doc, created_at, updated_at))?;
+            if doc.doc_id == 0 {
+                return Err(SearchError::InvalidInput("doc_id is 0".into()));
+            }
+            upsert_document(&tx, &tenant_id, &doc, Some(created_at), updated_at)?;
+            tenants.insert(tenant_id);
             indexed += 1;
         }
 
-        writer.commit()?;
+        tx.commit().map_err(SearchError::Sqlite)?;
 
         let tenant_count = tenants.len();
         Ok((
@@ -565,218 +312,25 @@ impl IndexManager {
         }
 
         let limit = limit.clamp(1, 50) as usize;
-        let reader = self.index.reader()?;
-        let searcher = reader.searcher();
-
-        let tenant_query = TermQuery::new(
-            Term::from_field_text(self.tenant_id_field, tenant_id),
-            IndexRecordOption::Basic,
-        );
-
-        let full_query: Box<dyn Query> = if query_str.is_empty() {
-            Box::new(AllQuery)
-        } else {
-            let parser = QueryParser::for_index(
-                &self.index,
-                vec![
-                    self.title_field,
-                    self.content_field,
-                    self.summary_field,
-                    self.note_field,
-                ],
-            );
-            parser.parse_query(query_str)?
-        };
-
-        let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![
-            (Occur::Must, Box::new(tenant_query)),
-            (Occur::Must, full_query),
-        ];
-
-        if let Some(prefix) = path_prefix.filter(|p| !p.is_empty() && *p != "/") {
-            let path_query = TermQuery::new(
-                Term::from_field_text(self.path_ancestors_field, prefix),
-                IndexRecordOption::Basic,
-            );
-            clauses.push((Occur::Must, Box::new(path_query)));
-        }
-
-        for tag in required_tags {
-            let term = Term::from_field_text(self.tags_field, tag);
-            clauses.push((
-                Occur::Must,
-                Box::new(TermQuery::new(term, IndexRecordOption::Basic)),
-            ));
-        }
-
-        let query = BooleanQuery::new(clauses);
-
-        let (total_hits, hits) = searcher.search(
-            &query,
-            &(Count, TopDocs::with_limit(limit).order_by_score()),
-        )?;
-
-        let mut results = Vec::with_capacity(hits.len());
-        for (score, doc_address) in hits {
-            let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-
-            let title = get_str_field(&retrieved, self.title_field);
-            let content = get_str_field(&retrieved, self.content_field);
-            let summary = get_str_field(&retrieved, self.summary_field);
-            let note = get_str_field(&retrieved, self.note_field);
-            let doc_url = get_str_field(&retrieved, self.doc_url_field);
-            let path = get_str_field(&retrieved, self.path_field);
-            let doc_id = get_u64_field(&retrieved, self.doc_id_field);
-            let created_at = get_i64_field(&retrieved, self.created_timestamp_field);
-            let updated_at = get_i64_field(&retrieved, self.update_timestamp_field);
-            let tags = retrieved
-                .get_all(self.tags_field)
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect::<Vec<_>>();
-
-            let snippet_source = if !summary.trim().is_empty() {
-                &summary
-            } else if content.trim().is_empty() {
-                &note
-            } else {
-                &content
-            };
-            let snippet = snippet_source.chars().take(220).collect::<String>();
-            results.push(SearchResultItem {
-                doc_id,
-                title,
-                doc_url,
-                snippet,
-                summary,
-                score,
-                created_at,
-                updated_at,
-                tags,
-                path,
-                note,
-            });
-        }
-
-        Ok((total_hits as u64, results))
+        let guard = self.lock()?;
+        search_impl(
+            &guard.conn,
+            tenant_id,
+            query_str,
+            limit,
+            path_prefix,
+            required_tags,
+        )
     }
 
     pub fn catalog_list(&self, tenant_id: &str, dir_path: &str) -> Result<CatalogListing> {
-        let reader = self.index.reader()?;
-        let searcher = reader.searcher();
-
-        let tenant_term = Term::from_field_text(self.tenant_id_field, tenant_id);
-        let tenant_query = TermQuery::new(tenant_term, IndexRecordOption::Basic);
-        let mut scope_clauses: Vec<(Occur, Box<dyn Query>)> =
-            vec![(Occur::Must, Box::new(tenant_query))];
-        if dir_path != "/" {
-            // Narrow the scan to the requested subtree instead of the whole tenant corpus.
-            let subtree_query = TermQuery::new(
-                Term::from_field_text(self.path_ancestors_field, dir_path),
-                IndexRecordOption::Basic,
-            );
-            scope_clauses.push((Occur::Must, Box::new(subtree_query)));
-        }
-        let scope_query = BooleanQuery::new(scope_clauses);
-
-        let hits = searcher.search(
-            &scope_query,
-            &TopDocs::with_limit(MAX_CATALOG_SCAN).order_by_score(),
-        )?;
-
-        let mut unique_paths: HashSet<String> = HashSet::new();
-        for (_, doc_address) in hits {
-            let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-            let p = retrieved
-                .get_first(self.path_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !p.is_empty() {
-                unique_paths.insert(p.to_string());
-            }
-        }
-
-        let mut subdir_paths: HashSet<String> = HashSet::new();
-        for p in &unique_paths {
-            if let Some(child) = direct_subdir_under(dir_path, p) {
-                subdir_paths.insert(child);
-            }
-        }
-
-        let mut subdirs: Vec<(String, String)> = subdir_paths
-            .into_iter()
-            .map(|path| {
-                let name = path
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .find(|s| !s.is_empty())
-                    .unwrap_or("")
-                    .to_string();
-                (name, path)
-            })
-            .collect();
-        subdirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-
-        let path_term = Term::from_field_text(self.path_field, dir_path);
-        let path_query = TermQuery::new(path_term, IndexRecordOption::Basic);
-        let dir_query = BooleanQuery::new(vec![
-            (
-                Occur::Must,
-                Box::new(TermQuery::new(
-                    Term::from_field_text(self.tenant_id_field, tenant_id),
-                    IndexRecordOption::Basic,
-                )),
-            ),
-            (Occur::Must, Box::new(path_query)),
-        ]);
-
-        let file_hits = searcher.search(
-            &dir_query,
-            &TopDocs::with_limit(MAX_CATALOG_FILES).order_by_score(),
-        )?;
-        let mut files: Vec<(u64, String)> = Vec::new();
-        for (_, doc_address) in file_hits {
-            let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-            let doc_id = get_u64_field(&retrieved, self.doc_id_field);
-            let title = get_str_field(&retrieved, self.title_field);
-            if doc_id != 0 {
-                files.push((doc_id, title));
-            }
-        }
-        files.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
-
-        Ok(CatalogListing {
-            path: dir_path.to_string(),
-            subdirs,
-            files,
-        })
+        let guard = self.lock()?;
+        catalog_list_impl(&guard.conn, tenant_id, dir_path)
     }
 
     pub fn get_document(&self, tenant_id: &str, doc_id: u64) -> Result<Option<StoredDocument>> {
-        let reader = self.index.reader()?;
-        let searcher = reader.searcher();
-        let query = self.make_tenant_doc_query(tenant_id, doc_id);
-        let hits = searcher.search(&query, &TopDocs::with_limit(1).order_by_score())?;
-        let (_, doc_address) = match hits.into_iter().next() {
-            Some(h) => h,
-            None => return Ok(None),
-        };
-
-        let retrieved = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-        Ok(Some(StoredDocument {
-            doc_id: get_u64_field(&retrieved, self.doc_id_field),
-            title: get_str_field(&retrieved, self.title_field),
-            content: get_str_field(&retrieved, self.content_field),
-            summary: get_str_field(&retrieved, self.summary_field),
-            doc_url: get_str_field(&retrieved, self.doc_url_field),
-            path: get_str_field(&retrieved, self.path_field),
-            note: get_str_field(&retrieved, self.note_field),
-            tags: retrieved
-                .get_all(self.tags_field)
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect(),
-            created_at: get_i64_field(&retrieved, self.created_timestamp_field),
-            updated_at: get_i64_field(&retrieved, self.update_timestamp_field),
-        }))
+        let guard = self.lock()?;
+        get_document_impl(&guard.conn, tenant_id, doc_id)
     }
 
     /// Removes the document for `tenant_id` and `doc_id`. Returns `Ok(false)` when nothing matched.
@@ -785,31 +339,487 @@ impl IndexManager {
             return Err(SearchError::InvalidInput("tenant_id is empty".into()));
         }
 
-        let exists = {
-            let reader = self.index.reader()?;
-            let searcher = reader.searcher();
-            self.existing_created_at(&searcher, tenant_id, doc_id)?
-                .is_some()
-        };
+        let mut guard = self.lock()?;
+        let tx = guard.conn.transaction().map_err(SearchError::Sqlite)?;
 
-        if !exists {
-            return Ok(false);
-        }
+        // ON DELETE CASCADE removes tag rows; the FTS5 delete trigger fires on the `documents` row.
+        let n = tx
+            .execute(
+                "DELETE FROM documents WHERE tenant_id = ?1 AND doc_id = ?2",
+                params![tenant_id, doc_id as i64],
+            )
+            .map_err(SearchError::Sqlite)?;
 
-        let mut writer = self
-            .index
-            .writer::<tantivy::TantivyDocument>(WRITER_HEAP_BYTES)?;
-        writer.delete_query(Box::new(self.make_tenant_doc_query(tenant_id, doc_id)))?;
-        writer.commit()?;
-
-        Ok(true)
+        tx.commit().map_err(SearchError::Sqlite)?;
+        Ok(n > 0)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Connection setup
+// ---------------------------------------------------------------------------
+
+fn open_and_prepare_connection(db_path: &Path) -> Result<Connection> {
+    let conn = Connection::open(db_path).map_err(SearchError::Sqlite)?;
+
+    // Register the `simple_tokenizer` (FTS5 `tokenize='simple'`) + helper SQL functions
+    // (`simple_query`, `simple_highlight`, …) on *this* connection. The upstream error type is
+    // `rusqlite_ext::error::Error`, which we surface as a generic input error.
+    sqlite_simple_tokenizer::load(&conn)
+        .map_err(|e| SearchError::InvalidInput(format!("failed to load simple tokenizer: {e}")))?;
+
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL;
+         PRAGMA busy_timeout=5000;
+         PRAGMA foreign_keys=ON;
+
+         CREATE TABLE IF NOT EXISTS documents (
+           id         INTEGER PRIMARY KEY AUTOINCREMENT,
+           tenant_id  TEXT NOT NULL,
+           doc_id     INTEGER NOT NULL,
+           title      TEXT NOT NULL DEFAULT '',
+           content    TEXT NOT NULL DEFAULT '',
+           summary    TEXT NOT NULL DEFAULT '',
+           note       TEXT NOT NULL DEFAULT '',
+           doc_url    TEXT NOT NULL DEFAULT '',
+           path       TEXT NOT NULL DEFAULT '/',
+           created_at INTEGER NOT NULL,
+           updated_at INTEGER NOT NULL
+         );
+
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_tenant_doc
+           ON documents(tenant_id, doc_id);
+
+         CREATE INDEX IF NOT EXISTS idx_documents_tenant_path
+           ON documents(tenant_id, path);
+
+         CREATE TABLE IF NOT EXISTS document_tags (
+           id  INTEGER NOT NULL,
+           tag TEXT NOT NULL,
+           PRIMARY KEY (id, tag),
+           FOREIGN KEY (id) REFERENCES documents(id) ON DELETE CASCADE
+         );
+
+         CREATE INDEX IF NOT EXISTS idx_document_tags_tag
+           ON document_tags(tag);
+
+         CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+           title, content, summary, note,
+           content='documents',
+           content_rowid='id',
+           -- `disable_stopword`: the default stopword list drops short pinyin tokens like
+           -- `bi`/`lu`/`you` at query time, which breaks Chinese searches such as 笔记/旅游
+           -- (their characters convert to those pinyins during indexing). Keeping every token
+           -- is also the right default for a document search app.
+           tokenize='simple disable_stopword'
+         );
+
+         CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+           INSERT INTO documents_fts(rowid, title, content, summary, note)
+           VALUES (new.id, new.title, new.content, new.summary, new.note);
+         END;
+
+         CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+           INSERT INTO documents_fts(documents_fts, rowid, title, content, summary, note)
+           VALUES ('delete', old.id, old.title, old.content, old.summary, old.note);
+         END;
+
+         CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+           INSERT INTO documents_fts(documents_fts, rowid, title, content, summary, note)
+           VALUES ('delete', old.id, old.title, old.content, old.summary, old.note);
+           INSERT INTO documents_fts(rowid, title, content, summary, note)
+           VALUES (new.id, new.title, new.content, new.summary, new.note);
+         END;",
+    )
+    .map_err(SearchError::Sqlite)?;
+
+    Ok(conn)
+}
+
+// ---------------------------------------------------------------------------
+// Write helpers
+// ---------------------------------------------------------------------------
+
+/// Insert or update the document row and its tags. Triggers sync `documents_fts` automatically.
+///
+/// `override_created_at`: when `Some`, sets `created_at` to that value (migration path); when `None`,
+/// keeps the existing row's `created_at` on update or uses `updated_at` on insert.
+fn upsert_document(
+    tx: &Transaction<'_>,
+    tenant_id: &str,
+    doc: &DocumentRow,
+    override_created_at: Option<i64>,
+    updated_at: i64,
+) -> Result<()> {
+    let existing: Option<(i64, i64)> = tx
+        .query_row(
+            "SELECT id, created_at FROM documents WHERE tenant_id = ?1 AND doc_id = ?2",
+            params![tenant_id, doc.doc_id as i64],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .optional()
+        .map_err(SearchError::Sqlite)?;
+
+    let id: i64 = match existing {
+        Some((id, existing_created)) => {
+            let created_at = override_created_at.unwrap_or(existing_created);
+            tx.execute(
+                "UPDATE documents
+                    SET title = ?1,
+                        content = ?2,
+                        summary = ?3,
+                        note = ?4,
+                        doc_url = ?5,
+                        path = ?6,
+                        created_at = ?7,
+                        updated_at = ?8
+                  WHERE id = ?9",
+                params![
+                    doc.title,
+                    doc.content,
+                    doc.summary,
+                    doc.note,
+                    doc.doc_url,
+                    doc.path,
+                    created_at,
+                    updated_at,
+                    id,
+                ],
+            )
+            .map_err(SearchError::Sqlite)?;
+            tx.execute("DELETE FROM document_tags WHERE id = ?1", params![id])
+                .map_err(SearchError::Sqlite)?;
+            id
+        }
+        None => {
+            let created_at = override_created_at.unwrap_or(updated_at);
+            tx.execute(
+                "INSERT INTO documents (tenant_id, doc_id, title, content, summary, note, doc_url, path, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    tenant_id,
+                    doc.doc_id as i64,
+                    doc.title,
+                    doc.content,
+                    doc.summary,
+                    doc.note,
+                    doc.doc_url,
+                    doc.path,
+                    created_at,
+                    updated_at,
+                ],
+            )
+            .map_err(SearchError::Sqlite)?;
+            tx.last_insert_rowid()
+        }
+    };
+
+    if !doc.tags.is_empty() {
+        let mut stmt = tx
+            .prepare_cached("INSERT OR IGNORE INTO document_tags (id, tag) VALUES (?1, ?2)")
+            .map_err(SearchError::Sqlite)?;
+        for tag in &doc.tags {
+            stmt.execute(params![id, tag])
+                .map_err(SearchError::Sqlite)?;
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Read helpers
+// ---------------------------------------------------------------------------
+
+fn load_tags(conn: &Connection, id: i64) -> Result<Vec<String>> {
+    let mut stmt = conn
+        .prepare_cached("SELECT tag FROM document_tags WHERE id = ?1 ORDER BY tag ASC")
+        .map_err(SearchError::Sqlite)?;
+    let rows = stmt
+        .query_map(params![id], |r| r.get::<_, String>(0))
+        .map_err(SearchError::Sqlite)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(SearchError::Sqlite)?);
+    }
+    Ok(out)
+}
+
+fn get_document_impl(
+    conn: &Connection,
+    tenant_id: &str,
+    doc_id: u64,
+) -> Result<Option<StoredDocument>> {
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT id, doc_id, title, content, summary, doc_url, path, note, created_at, updated_at
+               FROM documents
+              WHERE tenant_id = ?1 AND doc_id = ?2",
+        )
+        .map_err(SearchError::Sqlite)?;
+
+    let row = stmt
+        .query_row(params![tenant_id, doc_id as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, i64>(8)?,
+                r.get::<_, i64>(9)?,
+            ))
+        })
+        .optional()
+        .map_err(SearchError::Sqlite)?;
+
+    let Some((id, doc_id_i, title, content, summary, doc_url, path, note, created_at, updated_at)) =
+        row
+    else {
+        return Ok(None);
+    };
+
+    let tags = load_tags(conn, id)?;
+
+    Ok(Some(StoredDocument {
+        doc_id: doc_id_i as u64,
+        title,
+        content,
+        summary,
+        doc_url,
+        path,
+        note,
+        tags,
+        created_at,
+        updated_at,
+    }))
+}
+
+fn build_snippet(summary: &str, content: &str, note: &str) -> String {
+    let source = if !summary.trim().is_empty() {
+        summary
+    } else if content.trim().is_empty() {
+        note
+    } else {
+        content
+    };
+    source.chars().take(SEARCH_SNIPPET_CHARS).collect()
+}
+
+fn search_impl(
+    conn: &Connection,
+    tenant_id: &str,
+    query_str: &str,
+    limit: usize,
+    path_prefix: Option<&str>,
+    required_tags: &[String],
+) -> Result<(u64, Vec<SearchResultItem>)> {
+    let mut where_clauses: Vec<String> = vec!["d.tenant_id = ?".to_string()];
+    let mut bind_values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id.to_string())];
+
+    let fts = !query_str.is_empty();
+    if fts {
+        where_clauses.push("documents_fts MATCH simple_query(?)".to_string());
+        bind_values.push(Box::new(query_str.to_string()));
+    }
+
+    if let Some(prefix) = path_prefix
+        && !prefix.is_empty()
+        && prefix != "/"
+    {
+        // `prefix` is a canonical directory path like `/a/b/`; any document whose path starts
+        // with it belongs to that subtree.
+        where_clauses.push("d.path LIKE ? ESCAPE '\\'".to_string());
+        bind_values.push(Box::new(format!("{}%", escape_like(prefix))));
+    }
+
+    for tag in required_tags {
+        where_clauses.push("d.id IN (SELECT id FROM document_tags WHERE tag = ?)".to_string());
+        bind_values.push(Box::new(tag.clone()));
+    }
+
+    let where_sql = where_clauses.join(" AND ");
+
+    // Count query reuses the same filters.
+    let count_sql = if fts {
+        format!(
+            "SELECT COUNT(*) FROM documents_fts JOIN documents d ON d.id = documents_fts.rowid WHERE {where_sql}"
+        )
+    } else {
+        format!("SELECT COUNT(*) FROM documents d WHERE {where_sql}")
+    };
+
+    let total_hits: i64 = {
+        let mut stmt = conn.prepare(&count_sql).map_err(SearchError::Sqlite)?;
+        let params_vec: Vec<&dyn rusqlite::ToSql> =
+            bind_values.iter().map(|b| b.as_ref()).collect();
+        stmt.query_row(params_vec.as_slice(), |r| r.get::<_, i64>(0))
+            .map_err(SearchError::Sqlite)?
+    };
+
+    // Results query: bm25 is a non-positive "cost" (lower = better); we invert it so higher = better.
+    let select_sql = if fts {
+        format!(
+            "SELECT d.id, d.doc_id, d.title, d.content, d.summary, d.note, d.doc_url, d.path,
+                    d.created_at, d.updated_at, -bm25(documents_fts) AS score
+               FROM documents_fts
+               JOIN documents d ON d.id = documents_fts.rowid
+              WHERE {where_sql}
+              ORDER BY score DESC
+              LIMIT ?"
+        )
+    } else {
+        format!(
+            "SELECT d.id, d.doc_id, d.title, d.content, d.summary, d.note, d.doc_url, d.path,
+                    d.created_at, d.updated_at, 0.0 AS score
+               FROM documents d
+              WHERE {where_sql}
+              ORDER BY d.updated_at DESC
+              LIMIT ?"
+        )
+    };
+
+    bind_values.push(Box::new(limit as i64));
+
+    let mut stmt = conn.prepare(&select_sql).map_err(SearchError::Sqlite)?;
+    let params_vec: Vec<&dyn rusqlite::ToSql> = bind_values.iter().map(|b| b.as_ref()).collect();
+    let rows = stmt
+        .query_map(params_vec.as_slice(), |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, i64>(8)?,
+                r.get::<_, i64>(9)?,
+                r.get::<_, f64>(10)?,
+            ))
+        })
+        .map_err(SearchError::Sqlite)?;
+
+    let mut results = Vec::with_capacity(limit.min(16));
+    for r in rows {
+        let (
+            id,
+            doc_id_i,
+            title,
+            content,
+            summary,
+            note,
+            doc_url,
+            path,
+            created_at,
+            updated_at,
+            score,
+        ) = r.map_err(SearchError::Sqlite)?;
+        let tags = load_tags(conn, id)?;
+        let snippet = build_snippet(&summary, &content, &note);
+        results.push(SearchResultItem {
+            doc_id: doc_id_i as u64,
+            title,
+            doc_url,
+            snippet,
+            summary,
+            score: score as f32,
+            created_at,
+            updated_at,
+            tags,
+            path,
+            note,
+        });
+    }
+
+    Ok((total_hits as u64, results))
+}
+
+fn catalog_list_impl(conn: &Connection, tenant_id: &str, dir_path: &str) -> Result<CatalogListing> {
+    // Distinct paths inside the subtree to compute immediate subdirectories.
+    let (path_sql, path_params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if dir_path == "/" {
+        (
+            "SELECT DISTINCT path FROM documents WHERE tenant_id = ?1".to_string(),
+            vec![Box::new(tenant_id.to_string())],
+        )
+    } else {
+        (
+            "SELECT DISTINCT path FROM documents WHERE tenant_id = ?1 AND path LIKE ?2 ESCAPE '\\'"
+                .to_string(),
+            vec![
+                Box::new(tenant_id.to_string()),
+                Box::new(format!("{}%", escape_like(dir_path))),
+            ],
+        )
+    };
+
+    let mut stmt = conn.prepare(&path_sql).map_err(SearchError::Sqlite)?;
+    let params_vec: Vec<&dyn rusqlite::ToSql> = path_params.iter().map(|b| b.as_ref()).collect();
+    let rows = stmt
+        .query_map(params_vec.as_slice(), |r| r.get::<_, String>(0))
+        .map_err(SearchError::Sqlite)?;
+
+    let mut subdir_paths: HashSet<String> = HashSet::new();
+    for r in rows {
+        let p = r.map_err(SearchError::Sqlite)?;
+        if let Some(child) = direct_subdir_under(dir_path, &p) {
+            subdir_paths.insert(child);
+        }
+    }
+
+    let mut subdirs: Vec<(String, String)> = subdir_paths
+        .into_iter()
+        .map(|path| {
+            let name = path
+                .trim_end_matches('/')
+                .rsplit('/')
+                .find(|s| !s.is_empty())
+                .unwrap_or("")
+                .to_string();
+            (name, path)
+        })
+        .collect();
+    subdirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+
+    // Files directly under `dir_path`.
+    let mut file_stmt = conn
+        .prepare(
+            "SELECT doc_id, title
+               FROM documents
+              WHERE tenant_id = ?1 AND path = ?2
+              ORDER BY LOWER(title) ASC
+              LIMIT ?3",
+        )
+        .map_err(SearchError::Sqlite)?;
+    let file_rows = file_stmt
+        .query_map(
+            params![tenant_id, dir_path, MAX_CATALOG_FILES as i64],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )
+        .map_err(SearchError::Sqlite)?;
+
+    let mut files: Vec<(u64, String)> = Vec::new();
+    for r in file_rows {
+        let (doc_id, title) = r.map_err(SearchError::Sqlite)?;
+        if doc_id != 0 {
+            files.push((doc_id as u64, title));
+        }
+    }
+
+    Ok(CatalogListing {
+        path: dir_path.to_string(),
+        subdirs,
+        files,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::direct_subdir_under;
-    use super::{DocumentRow, IndexManager};
+    use super::{DocumentRow, IndexManager, direct_subdir_under};
     use tempfile::tempdir;
 
     #[test]
@@ -911,7 +921,7 @@ mod tests {
         let (n, hits) = im
             .search(tenant, "北京", 10, None, &[])
             .expect("search 北京");
-        assert_eq!(n, 1, "jieba should tokenize 北京 in title");
+        assert_eq!(n, 1, "simple should tokenize 北京 in title");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].doc_id, 1);
 
@@ -949,6 +959,51 @@ mod tests {
         assert_eq!(n, 1);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].doc_id, 1);
+    }
+
+    #[test]
+    fn update_document_preserves_created_at() {
+        let dir = tempdir().expect("tempdir");
+        let im = IndexManager::open_or_create(dir.path()).expect("open");
+        let tenant = "t_updates";
+
+        im.index_document(
+            tenant,
+            DocumentRow {
+                doc_id: 1,
+                title: "v1".to_string(),
+                content: "c1".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec![],
+                path: "/".to_string(),
+                note: String::new(),
+            },
+        )
+        .expect("insert");
+        let first = im.get_document(tenant, 1).expect("get").expect("some");
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        im.index_document(
+            tenant,
+            DocumentRow {
+                doc_id: 1,
+                title: "v2".to_string(),
+                content: "c2".to_string(),
+                summary: String::new(),
+                doc_url: String::new(),
+                tags: vec![],
+                path: "/".to_string(),
+                note: String::new(),
+            },
+        )
+        .expect("update");
+
+        let second = im.get_document(tenant, 1).expect("get2").expect("some2");
+        assert_eq!(second.title, "v2");
+        assert_eq!(second.created_at, first.created_at);
+        assert!(second.updated_at >= first.updated_at);
     }
 
     #[test]
@@ -998,5 +1053,54 @@ mod tests {
         assert!(im.delete_document(tenant, 42).expect("del"));
         assert!(!im.delete_document(tenant, 42).expect("del again"));
         assert!(im.get_document(tenant, 42).expect("get").is_none());
+    }
+
+    #[test]
+    fn catalog_lists_subdirs_and_files() {
+        let dir = tempdir().expect("tempdir");
+        let im = IndexManager::open_or_create(dir.path()).expect("open");
+        let tenant = "t_catalog";
+
+        for (doc_id, title, path) in [
+            (1u64, "root-a", "/"),
+            (2, "root-b", "/"),
+            (3, "x-file", "/x/"),
+            (4, "y-file", "/x/y/"),
+            (5, "z-file", "/z/"),
+        ] {
+            im.index_document(
+                tenant,
+                DocumentRow {
+                    doc_id,
+                    title: title.to_string(),
+                    content: String::new(),
+                    summary: String::new(),
+                    doc_url: String::new(),
+                    tags: vec![],
+                    path: path.to_string(),
+                    note: String::new(),
+                },
+            )
+            .expect("idx");
+        }
+
+        let root = im.catalog_list(tenant, "/").expect("list /");
+        let root_subdir_names: Vec<&str> = root.subdirs.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(root_subdir_names, vec!["x", "z"]);
+        let root_files: Vec<&str> = root.files.iter().map(|(_, t)| t.as_str()).collect();
+        assert_eq!(root_files, vec!["root-a", "root-b"]);
+
+        let x = im.catalog_list(tenant, "/x/").expect("list /x/");
+        assert_eq!(
+            x.subdirs
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>(),
+            vec!["y"]
+        );
+        assert_eq!(
+            x.files.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(),
+            vec!["x-file"]
+        );
     }
 }

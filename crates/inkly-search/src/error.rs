@@ -5,6 +5,10 @@ pub enum SearchError {
     #[error("index IO error: {0}")]
     IndexIO(#[from] std::io::Error),
 
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+
+    /// Used only by the legacy-read path in [`crate::migrate`].
     #[error("tantivy error: {0}")]
     Tantivy(#[from] tantivy::TantivyError),
 
@@ -22,9 +26,3 @@ pub enum SearchError {
 }
 
 pub type Result<T, E = SearchError> = std::result::Result<T, E>;
-
-impl From<tantivy::query::QueryParserError> for SearchError {
-    fn from(value: tantivy::query::QueryParserError) -> Self {
-        SearchError::InvalidInput(value.to_string())
-    }
-}

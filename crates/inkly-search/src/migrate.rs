@@ -1,15 +1,15 @@
-//! Offline migration of on-disk search storage (`version.data` + Tantivy `index/`).
+//! Offline migration of on-disk document storage (`version.data` + search artifacts).
 //!
-//! Currently supported: **data_version 2/3 → [`STORAGE_DATA_VERSION`](crate::storage_meta::STORAGE_DATA_VERSION)**  
-//! (rebuild index with current schema while preserving `doc_id`, timestamps, and `auto_increment`).
+//! Currently supported: **data_version 2/3/4 → [`STORAGE_DATA_VERSION`](crate::storage_meta::STORAGE_DATA_VERSION)**.
+//! The legacy layouts are Tantivy-based (`index/` sibling of `version.data`); the new layout stores
+//! everything in a single `db.sqlite3` file with an FTS5 `simple` tokenizer.
 //!
-//! The live tree under `documents_root` is not modified until the new index is complete: a sibling
+//! The live tree under `documents_root` is not modified until the new store is complete: a sibling
 //! staging directory is filled first, then the old directory is renamed to
 //! `{name}.old.{rfc3339-utc-with-colons-as-hyphens}.backup` and the staging directory is renamed into place.
 //!
-//! Copying is **streamed**: each legacy document is read and written in turn with a single Tantivy writer
-//! and one `commit`, so peak memory does not include a full in-memory map of all rows (only the
-//! [`DocAddress`](tantivy::DocAddress) list is collected for stable ordering).
+//! Copying is **streamed**: each legacy document is read and written in turn through a single SQLite
+//! transaction, so peak memory does not include a full in-memory map of all rows.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,7 +28,7 @@ use crate::storage_meta::{self, VersionData};
 
 /// Legacy `data_version` values this binary can migrate from.
 pub const MIGRATE_FROM_DATA_VERSION_MIN: u32 = 2;
-pub const MIGRATE_FROM_DATA_VERSION_MAX: u32 = 3;
+pub const MIGRATE_FROM_DATA_VERSION_MAX: u32 = 4;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MigrateReport {
@@ -63,8 +63,8 @@ fn require_field(schema: &tantivy::schema::Schema, name: &str) -> Result<Field> 
     })
 }
 
-/// Field handles for reading a legacy index row (same names as [`IndexManager`] schema).
-struct SourceDocFields {
+/// Field handles for reading a legacy (Tantivy) index row.
+struct LegacyDocFields {
     tenant_id: Field,
     doc_id: Field,
     doc_url: Field,
@@ -78,7 +78,7 @@ struct SourceDocFields {
     note: Field,
 }
 
-impl SourceDocFields {
+impl LegacyDocFields {
     fn resolve(schema: &tantivy::schema::Schema) -> Result<Self> {
         Ok(Self {
             tenant_id: require_field(schema, "tenant_id")?,
@@ -128,10 +128,6 @@ impl SourceDocFields {
     }
 }
 
-fn index_dir_has_meta(index_dir: &Path) -> bool {
-    index_dir.join("meta.json").is_file()
-}
-
 /// UTC timestamp in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) layout for directory names.
 /// Colons in the time portion are replaced with `-` so the token is valid on Windows paths.
 fn migrate_path_timestamp_token() -> Result<String> {
@@ -173,8 +169,9 @@ fn prepare_staging_dir(staging: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Export from the existing v2 tree (read-only), build a v3 tree in a staging directory, then
-/// atomically swap: rename live `documents_root` → `{name}.old.{rfc3339}.backup`, rename staging → `documents_root`.
+/// Export from the existing Tantivy tree (read-only), build a SQLite store in a staging directory,
+/// then atomically swap: rename live `documents_root` → `{name}.old.{rfc3339}.backup`, rename
+/// staging → `documents_root`.
 ///
 /// `documents_root` is the same path passed to [`IndexManager::open_or_create`] (e.g. `$DATA_DIR/documents`).
 /// Its **parent directory** must exist and must be on the same filesystem as `documents_root` (same-volume `rename`).
@@ -271,7 +268,7 @@ pub fn migrate_storage_to_current(
     prepare_staging_dir(&staging)?;
 
     let build_result = (|| -> Result<(usize, usize)> {
-        let index_dir = storage_meta::index_dir(documents_root);
+        let legacy_index_dir = storage_meta::legacy_index_dir(documents_root);
 
         storage_meta::write_version_data(
             &staging,
@@ -283,9 +280,10 @@ pub fn migrate_storage_to_current(
 
         let mgr = IndexManager::open_or_create(&staging)?;
 
-        let (stats, tenant_count) = if index_dir_has_meta(&index_dir) {
-            let source_index = Index::open_in_dir(&index_dir)?;
-            let fields = SourceDocFields::resolve(&source_index.schema())?;
+        let (stats, tenant_count) = if storage_meta::legacy_tantivy_index_present(&legacy_index_dir)
+        {
+            let source_index = Index::open_in_dir(&legacy_index_dir)?;
+            let fields = LegacyDocFields::resolve(&source_index.schema())?;
             let reader = source_index.reader()?;
             let searcher = reader.searcher();
             let mut addresses: Vec<tantivy::DocAddress> = searcher
@@ -357,7 +355,7 @@ mod tests {
     use super::*;
     use crate::index_manager::IndexManager;
 
-    /// Schema matching inkly storage **data_version 2** (pre-jieba text fields).
+    /// Schema matching Inkly storage **data_version 2** (pre-jieba text fields).
     fn build_schema_v2() -> tantivy::schema::Schema {
         let mut builder = tantivy::schema::Schema::builder();
         let _ = builder.add_text_field("tenant_id", STRING | STORED);
@@ -388,7 +386,7 @@ mod tests {
         // Windows (Access denied), and we must drop the test IndexWriter/Index before migrate runs.
         let root = dir.path().join("documents");
         fs::create_dir_all(&root).expect("mkdir documents root");
-        let idx_dir = storage_meta::index_dir(&root);
+        let idx_dir = storage_meta::legacy_index_dir(&root);
         fs::create_dir_all(&idx_dir).expect("mkdir index");
 
         storage_meta::write_version_data(
@@ -453,6 +451,7 @@ mod tests {
         let after = storage_meta::read_version_data(&root).expect("read ver");
         assert_eq!(after.data_version, storage_meta::STORAGE_DATA_VERSION);
         assert_eq!(after.auto_increment, 2000);
+        assert!(storage_meta::sqlite_db_path(&root).is_file());
 
         let im = IndexManager::open_or_create(&root).expect("open new");
         let stored = im.get_document("tenant_a", 7).expect("get").expect("some");
@@ -474,7 +473,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let documents = dir.path().join("documents");
         let staging = dir.path().join("custom_staging");
-        let idx_dir = storage_meta::index_dir(&documents);
+        let idx_dir = storage_meta::legacy_index_dir(&documents);
         fs::create_dir_all(&idx_dir).expect("mkdir index");
 
         storage_meta::write_version_data(

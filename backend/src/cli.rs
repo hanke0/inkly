@@ -27,8 +27,10 @@ pub enum Commands {
     Models,
     /// Upgrade on-disk document search storage to the current `data_version` (stop the server first).
     ///
-    /// Rebuilds `index/` under the documents root (e.g. Tantivy schema with Chinese tokenization) and
-    /// rewrites `version.data`, preserving `auto_increment` and all indexed documents.
+    /// Rebuilds the documents root into the current SQLite + FTS5 layout (using the `simple`
+    /// tokenizer for Chinese / pinyin search) and rewrites `version.data`, preserving
+    /// `auto_increment` and all indexed documents. Legacy Tantivy trees (`index/`) are read
+    /// read-only during migration and left untouched under the `*.old.<rfc3339>.backup` directory.
     Migrate {
         /// Directory containing `index/` and `version.data` (default: `$DATA_DIR/documents`, same as the server).
         #[arg(long)]
