@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 encoding_rs = "0.8"
 hf-hub = { version = "0.5", default-features = false, features = ["ureq", "rustls-tls"] }
-html2text = "0.16"
+html2text = "0.17"
 llama-cpp-2 = "0.1.145"
 thiserror = "2"
 tracing = "0.1"
