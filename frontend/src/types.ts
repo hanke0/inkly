@@ -49,7 +49,6 @@ export type SearchResult = {
 };
 
 export type SearchResponse = {
-  total_hits: number;
   results: SearchResult[];
 };
 

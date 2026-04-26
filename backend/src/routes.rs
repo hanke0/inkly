@@ -494,7 +494,7 @@ pub async fn search(
         "search"
     );
 
-    let (total_hits, items) = tokio::task::spawn_blocking(move || {
+    let (_total_hits, items) = tokio::task::spawn_blocking(move || {
         index.search(
             &tenant_id,
             &q_trimmed,
@@ -508,7 +508,6 @@ pub async fn search(
     .map_err(|e| map_search_error(e, locale))?;
 
     Ok(Json(SearchResponse {
-        total_hits,
         results: items.into_iter().map(into_search_result).collect(),
     }))
 }

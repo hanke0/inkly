@@ -20,7 +20,7 @@ export function SearchResultsDialog({
   response,
   queryHint,
 }: SearchResultsDialogProps) {
-  const { t, tf } = useI18n();
+  const { t } = useI18n();
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   useModalBehavior(open, onClose, closeRef);
@@ -55,9 +55,6 @@ export function SearchResultsDialog({
                 "{queryHint}"
               </p>
             ) : null}
-            <p className="mt-1 text-xs text-inkly-faint">
-              {tf('search.hits', { n: response.total_hits })}
-            </p>
           </div>
           <button
             ref={closeRef}

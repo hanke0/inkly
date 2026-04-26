@@ -60,7 +60,6 @@ pub struct SearchResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchResponse {
-    pub total_hits: u64,
     pub results: Vec<SearchResult>,
 }
 
