@@ -1,0 +1,11 @@
+{
+  "name": "inkly",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev -w frontend",
+    "test": "npm run test -w frontend"
+  },
+  "workspaces": [
+    "frontend"
+  ]
+}
