@@ -62,7 +62,7 @@ fn bench_search(c: &mut Criterion) {
 
     group.bench_function("query_only", |b| {
         b.iter(|| {
-            let (hits, rows) = bench_index
+            let rows = bench_index
                 .index
                 .search(
                     black_box(TENANT),
@@ -72,14 +72,14 @@ fn bench_search(c: &mut Criterion) {
                     black_box(&[]),
                 )
                 .expect("search query_only");
-            black_box((hits, rows.len()));
+            black_box(rows.len());
         });
     });
 
     let required_tags = vec!["hot".to_string(), "tag3".to_string()];
     group.bench_function("query_with_path_and_tags", |b| {
         b.iter(|| {
-            let (hits, rows) = bench_index
+            let rows = bench_index
                 .index
                 .search(
                     black_box(TENANT),
@@ -89,7 +89,7 @@ fn bench_search(c: &mut Criterion) {
                     black_box(required_tags.as_slice()),
                 )
                 .expect("search query_with_path_and_tags");
-            black_box((hits, rows.len()));
+            black_box(rows.len());
         });
     });
 
