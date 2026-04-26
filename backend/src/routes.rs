@@ -494,7 +494,7 @@ pub async fn search(
         "search"
     );
 
-    let (_total_hits, items) = tokio::task::spawn_blocking(move || {
+    let items = tokio::task::spawn_blocking(move || {
         index.search(
             &tenant_id,
             &q_trimmed,

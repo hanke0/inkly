@@ -461,10 +461,10 @@ mod tests {
         assert_eq!(stored.updated_at, 200);
         assert_eq!(stored.tags, vec!["x".to_string()]);
 
-        let (n, hits) = im
+        let hits = im
             .search("tenant_a", "北京", 10, None, &[])
             .expect("search cn");
-        assert_eq!(n, 1);
+        assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].doc_id, 7);
     }
 

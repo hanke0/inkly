@@ -302,7 +302,7 @@ impl IndexManager {
         limit: u32,
         path_prefix: Option<&str>,
         required_tags: &[String],
-    ) -> Result<(u64, Vec<SearchResultItem>)> {
+    ) -> Result<Vec<SearchResultItem>> {
         let query_str = query_str.trim();
         let has_path = path_prefix.is_some_and(|p| !p.is_empty() && p != "/");
         let has_tags = !required_tags.is_empty();
@@ -617,7 +617,7 @@ fn search_impl(
     limit: usize,
     path_prefix: Option<&str>,
     required_tags: &[String],
-) -> Result<(u64, Vec<SearchResultItem>)> {
+) -> Result<Vec<SearchResultItem>> {
     let mut where_clauses: Vec<String> = vec!["d.tenant_id = ?".to_string()];
     let mut bind_values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id.to_string())];
 
@@ -643,23 +643,6 @@ fn search_impl(
     }
 
     let where_sql = where_clauses.join(" AND ");
-
-    // Count query reuses the same filters.
-    let count_sql = if fts {
-        format!(
-            "SELECT COUNT(*) FROM documents_fts JOIN documents d ON d.id = documents_fts.rowid WHERE {where_sql}"
-        )
-    } else {
-        format!("SELECT COUNT(*) FROM documents d WHERE {where_sql}")
-    };
-
-    let total_hits: i64 = {
-        let mut stmt = conn.prepare(&count_sql).map_err(SearchError::Sqlite)?;
-        let params_vec: Vec<&dyn rusqlite::ToSql> =
-            bind_values.iter().map(|b| b.as_ref()).collect();
-        stmt.query_row(params_vec.as_slice(), |r| r.get::<_, i64>(0))
-            .map_err(SearchError::Sqlite)?
-    };
 
     // Results query: bm25 is a non-positive "cost" (lower = better); we invert it so higher = better.
     let select_sql = if fts {
@@ -737,7 +720,7 @@ fn search_impl(
         });
     }
 
-    Ok((total_hits as u64, results))
+    Ok(results)
 }
 
 fn catalog_list_impl(conn: &Connection, tenant_id: &str, dir_path: &str) -> Result<CatalogListing> {
@@ -874,18 +857,17 @@ mod tests {
         )
         .expect("idx3");
 
-        let (n, hits) = im
+        let hits = im
             .search(tenant, "body", 10, Some("/proj/"), &[])
             .expect("search path");
-        assert_eq!(n, 2);
         assert_eq!(hits.len(), 2);
 
-        let (_, hits2) = im
+        let hits2 = im
             .search(tenant, "", 10, Some("/proj/"), &["rust".to_string()])
             .expect("search tag+path");
         assert_eq!(hits2.len(), 2);
 
-        let (_, hits3) = im
+        let hits3 = im
             .search(
                 tenant,
                 "",
@@ -919,17 +901,16 @@ mod tests {
         )
         .expect("idx");
 
-        let (n, hits) = im
+        let hits = im
             .search(tenant, "北京", 10, None, &[])
             .expect("search 北京");
-        assert_eq!(n, 1, "simple should tokenize 北京 in title");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].doc_id, 1);
 
-        let (n2, hits2) = im
+        let hits2 = im
             .search(tenant, "故宫", 10, None, &[])
             .expect("search 故宫");
-        assert_eq!(n2, 1);
+        assert_eq!(hits2.len(), 1);
         assert_eq!(hits2[0].doc_id, 1);
     }
 
@@ -954,10 +935,9 @@ mod tests {
         )
         .expect("idx");
 
-        let (n, hits) = im
+        let hits = im
             .search(tenant, "UniqueSummaryToken", 10, None, &[])
             .expect("search summary");
-        assert_eq!(n, 1);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].doc_id, 1);
     }
