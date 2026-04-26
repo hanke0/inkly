@@ -274,9 +274,10 @@ impl IndexManager {
             if tenant_id.trim().is_empty() {
                 return Err(SearchError::InvalidInput("tenant_id is empty".into()));
             }
-            if doc.doc_id == 0 {
-                return Err(SearchError::InvalidInput("doc_id is 0".into()));
-            }
+            // `doc_id == 0` is rejected by the live ingest paths but legacy on-disk data
+            // can still contain rows with id 0 (some pre-1.0 builds allocated ids starting
+            // from 0). Migration must preserve them verbatim — the SQLite store uses
+            // `(tenant_id, doc_id)` as a uniqueness key with no positivity constraint.
             upsert_document(&tx, &tenant_id, &doc, Some(created_at), updated_at)?;
             tenants.insert(tenant_id);
             indexed += 1;
